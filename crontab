@@ -1,0 +1,3 @@
+# 每个交易日14:30运行股票筛选
+# 分钟 小时 日 月 星期 命令
+30 14 * * 1-5 cd /app && python3 stock_picker.py >> /app/logs/stock_picker.log 2>&1

@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A股短线策略交易系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; }
+        .sector-tab { transition: all 0.2s; }
+        .sector-tab.active { background: #8b5cf6; color: white; border-color: #8b5cf6; }
+        .sector-tab:hover:not(.active) { background: #334155; }
+        .stock-row:hover { background: rgba(139, 92, 246, 0.08); cursor: pointer; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+    <!-- Header -->
+    <header class="h-12 border-b border-slate-700 bg-slate-900 flex items-center px-6 justify-between flex-shrink-0 z-20 shadow-lg">
+        <div class="flex items-center gap-3">
+            <div class="w-7 h-7 rounded bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center text-white"><i class="fas fa-chart-line text-sm"></i></div>
+            <h1 class="font-bold text-lg tracking-wide text-slate-100">A股短线策略系统 <span class="text-xs bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded ml-1 border border-slate-700">Pro</span></h1>
+        </div>
+        <div class="flex items-center gap-4 text-xs text-slate-400">
+            <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> 服务在线</span>
+            <span id="sys-time">00:00:00</span>
+        </div>
+    </header>
+
+    <!-- Main Layout -->
+    <main class="flex-1 grid grid-cols-12 gap-0 overflow-hidden">
+        
+        <!-- Left Column: Strategies & Hot Sectors -->
+        <section class="col-span-12 lg:col-span-9 flex flex-col border-r border-slate-700 bg-[#0b1120]">
+            
+            <!-- Part 1: Strategy Tabs & Table -->
+            <div class="h-1/2 flex flex-col border-b border-slate-700">
+                <div class="h-12 bg-slate-800/50 flex items-center px-4 justify-between border-b border-slate-700 flex-shrink-0">
+                    <div class="flex h-full">
+                        <button onclick="switchTab('realtime')" id="btn-tab-realtime" class="px-5 h-full text-sm font-medium border-b-2 border-violet-500 text-white flex items-center gap-2 transition-all hover:bg-slate-700/50">
+                            <i class="fas fa-bolt text-yellow-400"></i> 实时极速筛选
+                        </button>
+                        <button onclick="switchTab('limitup')" id="btn-tab-limitup" class="px-5 h-full text-sm font-medium border-b-2 border-transparent text-slate-400 flex items-center gap-2 hover:text-violet-400 transition-all hover:bg-slate-700/50">
+                            <i class="fas fa-fire text-red-500"></i> 短线涨停复盘
+                        </button>
+                    </div>
+                    <button onclick="runActiveStrategy()" id="btn-run-action" class="bg-violet-600 hover:bg-violet-500 text-white text-xs px-5 py-2 rounded shadow-lg transition-all flex items-center gap-2">
+                        <i class="fas fa-play"></i> 开始执行
+                    </button>
+                </div>
+
+                <div class="flex-1 overflow-hidden relative flex flex-col">
+                    <!-- Loading Overlay -->
+                    <div id="loading-overlay" class="hidden absolute inset-0 bg-slate-900/80 backdrop-blur-sm z-10 flex flex-col items-center justify-center">
+                        <div class="w-12 h-12 border-4 border-violet-500/30 border-t-violet-500 rounded-full animate-spin mb-4"></div>
+                        <h3 class="text-sm font-medium text-white" id="loading-text">正在执行策略...</h3>
+                        <div class="w-48 bg-slate-700 h-1.5 rounded-full mt-2 overflow-hidden">
+                            <div id="loading-bar" class="bg-violet-500 h-full w-0 transition-all duration-300"></div>
+                        </div>
+                    </div>
+
+                    <!-- Strategy 1 -->
+                    <div id="view-realtime" class="flex-1 overflow-auto p-0">
+                        <div class="p-2 bg-slate-800/30 text-xs text-slate-400 border-b border-slate-700 flex justify-between">
+                            <span>全市场扫描 (条件: 涨幅3-5% / 量比>1 / 市值50-200亿)</span>
+                            <span id="count-realtime" class="bg-slate-700 px-2 py-0.5 rounded text-white">0 只</span>
+                        </div>
+                        <table class="w-full text-left border-collapse">
+                            <thead class="text-xs text-slate-500 bg-slate-800/30 sticky top-0">
+                                <tr>
+                                    <th class="py-2 px-4 font-medium">代码</th>
+                                    <th class="py-2 px-4 font-medium">名称</th>
+                                    <th class="py-2 px-4 font-medium text-right">最新价</th>
+                                    <th class="py-2 px-4 font-medium text-right">涨幅</th>
+                                    <th class="py-2 px-4 font-medium text-right">量比</th>
+                                    <th class="py-2 px-4 font-medium text-right">换手</th>
+                                    <th class="py-2 px-4 font-medium">所属板块</th>
+                                    <th class="py-2 px-4 font-medium text-center">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbody-realtime" class="text-sm font-mono text-slate-300"></tbody>
+                        </table>
+                    </div>
+
+                    <!-- Strategy 2 -->
+                    <div id="view-limitup" class="hidden flex-1 overflow-auto p-0">
+                        <div class="p-2 bg-slate-800/30 text-xs text-slate-400 border-b border-slate-700 flex justify-between">
+                            <span>涨停基因挖掘 (近20日有涨停 / 均线多头 / 评分排序)</span>
+                            <span id="count-limitup" class="bg-slate-700 px-2 py-0.5 rounded text-white">0 只</span>
+                        </div>
+                        <table class="w-full text-left border-collapse">
+                            <thead class="text-xs text-slate-500 bg-slate-800/30 sticky top-0">
+                                <tr>
+                                    <th class="py-2 px-4 font-medium text-yellow-500">评分</th>
+                                    <th class="py-2 px-4 font-medium">代码</th>
+                                    <th class="py-2 px-4 font-medium">名称</th>
+                                    <th class="py-2 px-4 font-medium text-right">最新价</th>
+                                    <th class="py-2 px-4 font-medium text-center">涨停</th>
+                                    <th class="py-2 px-4 font-medium text-right">流通市值</th>
+                                    <th class="py-2 px-4 font-medium">行业</th>
+                                    <th class="py-2 px-4 font-medium text-center">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tbody-limitup" class="text-sm font-mono text-slate-300"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Part 2: Hot Sectors -->
+            <div class="h-1/2 flex flex-col bg-slate-900">
+                <div class="h-10 flex items-center px-4 border-b border-slate-700 bg-slate-800 justify-between flex-shrink-0">
+                    <div class="flex items-center gap-2">
+                        <i class="fas fa-fire text-red-500 animate-pulse"></i>
+                        <span class="text-sm font-bold text-slate-200">核心热门板块股池 (实时 Top 10)</span>
+                    </div>
+                    <span class="text-[10px] text-emerald-500 animate-pulse flex items-center"><i class="fas fa-sync-alt mr-1"></i> Live</span>
+                </div>
+                
+                <div class="h-9 bg-[#0f172a] border-b border-slate-700 flex items-center px-2 overflow-x-auto whitespace-nowrap space-x-1" id="sector-nav"></div>
+
+                <div class="flex-1 overflow-auto p-0 bg-[#0b1120]">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="text-xs text-slate-500 bg-slate-800/30 sticky top-0">
+                            <tr>
+                                <th class="py-2 px-4 font-medium text-center w-12">排名</th>
+                                <th class="py-2 px-4 font-medium w-20">代码</th>
+                                <th class="py-2 px-4 font-medium">名称</th>
+                                <th class="py-2 px-4 font-medium text-right">最新价</th>
+                                <th class="py-2 px-4 font-medium text-right">涨幅</th>
+                                <th class="py-2 px-4 font-medium text-right">量比</th>
+                                <th class="py-2 px-4 font-medium text-right">热门分</th>
+                                <th class="py-2 px-4 font-medium text-center">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-hot-sector" class="text-sm font-mono text-slate-300"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Right Column -->
+        <aside class="col-span-12 lg:col-span-3 bg-slate-900 flex flex-col overflow-hidden">
+            
+            <div class="p-4 border-b border-slate-700 bg-slate-800/30">
+                <div class="flex justify-between items-center mb-2">
+                    <h2 class="text-sm font-bold text-slate-200"><i class="fas fa-tachometer-alt text-blue-500 mr-2"></i>系统状态</h2>
+                    <span id="status-badge" class="text-[10px] bg-slate-700 px-2 py-0.5 rounded text-slate-300 border border-slate-600">Ready</span>
+                </div>
+                <div class="w-full bg-slate-700 rounded-full h-1.5 mb-1">
+                    <div id="main-progress-bar" class="bg-blue-500 h-1.5 rounded-full w-0 transition-all duration-500"></div>
+                </div>
+                <p id="status-text" class="text-[10px] text-slate-400 text-right">等待操作</p>
+            </div>
+
+            <div class="p-4 border-b border-slate-700 bg-slate-800/30">
+                <h2 class="text-sm font-bold text-slate-200 mb-3"><i class="fas fa-clock text-yellow-500 mr-2"></i>定时任务</h2>
+                <div class="space-y-3">
+                    <div class="flex items-center justify-between bg-slate-800 p-2 rounded border border-slate-700">
+                        <span class="text-xs text-slate-300">启用自动运行</span>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="schedule-toggle" class="sr-only peer">
+                            <div class="w-8 h-4 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-violet-600"></div>
+                        </label>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <input type="number" id="sch-hour" value="14" class="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-center text-white">
+                        <input type="number" id="sch-min" value="30" class="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-center text-white">
+                    </div>
+                    <button onclick="saveSchedule()" class="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs py-1.5 rounded transition-colors">保存设置</button>
+                </div>
+            </div>
+
+            <div class="p-4 border-b border-slate-700 bg-slate-800/30">
+                <h2 class="text-sm font-bold text-slate-200 mb-3"><i class="fas fa-history text-emerald-500 mr-2"></i>最近分析</h2>
+                <div id="analysis-history-list" class="space-y-1">
+                    <p class="text-slate-500 text-xs text-center py-2">暂无分析记录</p>
+                </div>
+            </div>
+
+            <div class="flex-1 flex flex-col min-h-[150px] overflow-hidden">
+                <div class="h-7 flex items-center px-3 border-b border-slate-700 bg-slate-800/50">
+                    <h3 class="text-xs font-bold text-slate-400"><i class="fas fa-terminal text-green-500 mr-2"></i> 运行日志</h3>
+                </div>
+                <pre id="log-console" class="flex-1 p-3 text-[10px] font-mono text-green-400/80 overflow-y-auto bg-black leading-relaxed">[System] 初始化完成...</pre>
+            </div>
+        </aside>
+
+    </main>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

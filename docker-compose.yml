@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  stock-picker:
+    build: .
+    container_name: stock-picker
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - TZ=Asia/Shanghai
+    restart: unless-stopped
+    # 手动运行测试：
+    # docker compose run --rm stock-picker python3 stock_picker.py

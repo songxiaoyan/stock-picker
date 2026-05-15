@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>股票深度分析 - {{ code }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: #0f172a; color: #e2e8f0; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+        .chart-container { width: 100%; height: 320px; }
+        .chart-large { height: 420px; }
+    </style>
+</head>
+<body class="min-h-screen">
+
+    <!-- Header -->
+    <header class="h-12 border-b border-slate-700 bg-slate-900 flex items-center px-6 justify-between flex-shrink-0 shadow-lg">
+        <div class="flex items-center gap-3">
+            <a href="/" class="flex items-center gap-3 hover:opacity-80 transition-opacity">
+                <div class="w-7 h-7 rounded bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center text-white">
+                    <i class="fas fa-chart-line text-sm"></i>
+                </div>
+                <h1 class="font-bold text-lg tracking-wide text-slate-100">A股短线策略系统</h1>
+            </a>
+            <span class="text-slate-500">/</span>
+            <span class="text-violet-400 font-mono">{{ code }}</span>
+        </div>
+        <div class="flex items-center gap-4">
+            <a href="/" class="text-slate-400 hover:text-white text-sm transition-colors">
+                <i class="fas fa-arrow-left mr-2"></i>返回首页
+            </a>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="p-6 max-w-7xl mx-auto">
+        <!-- Loading State -->
+        <div id="loading-state" class="flex flex-col items-center justify-center min-h-[400px]">
+            <div class="w-12 h-12 border-4 border-violet-500/30 border-t-violet-500 rounded-full animate-spin mb-4"></div>
+            <p class="text-slate-400">正在加载分析数据...</p>
+        </div>
+
+        <!-- Analysis Content -->
+        <div id="analysis-content" class="hidden space-y-6">
+            <!-- Stock Info Header -->
+            <div class="bg-gradient-to-r from-slate-800 to-slate-900 rounded-xl p-6 border border-slate-700 shadow-lg">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 id="stock-name" class="text-3xl font-bold text-white"></h2>
+                        <p id="stock-code" class="text-violet-400 font-mono mt-1"></p>
+                        <p id="stock-industry" class="text-yellow-400 text-sm mt-2"><i class="fas fa-industry mr-1"></i><span id="industry-text"></span></p>
+                    </div>
+                    <div class="text-right">
+                        <p id="stock-price" class="text-4xl font-bold"></p>
+                        <p id="stock-change" class="text-lg mt-1"></p>
+                    </div>
+                </div>
+                
+                <!-- KPI Cards -->
+                <div class="grid grid-cols-4 gap-4 mt-6">
+                    <div class="bg-slate-700/50 rounded-lg p-4 border-l-4 border-emerald-500">
+                        <p class="text-slate-400 text-xs mb-1">换手率</p>
+                        <p id="stock-turnover" class="text-2xl font-bold text-white"></p>
+                    </div>
+                    <div class="bg-slate-700/50 rounded-lg p-4 border-l-4 border-blue-500">
+                        <p class="text-slate-400 text-xs mb-1">量比</p>
+                        <p id="stock-volume-ratio" class="text-2xl font-bold text-white"></p>
+                    </div>
+                    <div class="bg-slate-700/50 rounded-lg p-4 border-l-4 border-purple-500">
+                        <p class="text-slate-400 text-xs mb-1">流通市值</p>
+                        <p id="stock-market-cap" class="text-2xl font-bold text-white"></p>
+                    </div>
+                    <div class="bg-slate-700/50 rounded-lg p-4 border-l-4 border-yellow-500">
+                        <p class="text-slate-400 text-xs mb-1">成交额</p>
+                        <p id="stock-amount" class="text-2xl font-bold text-white"></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Row -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Fund Flow Chart -->
+                <div class="bg-slate-800 rounded-xl p-5 border border-slate-700 shadow-lg">
+                    <div class="flex items-center gap-2 mb-4">
+                        <i class="fas fa-money-bill-wave text-emerald-500"></i>
+                        <h3 class="font-bold text-white">资金流向（近20日）</h3>
+                    </div>
+                    <div id="fund-flow-chart" class="chart-container"></div>
+                    <div class="grid grid-cols-4 gap-3 mt-4 text-center">
+                        <div class="bg-red-500/10 rounded p-2">
+                            <p class="text-xs text-slate-400">超大单</p>
+                            <p id="flow-super" class="text-sm font-bold text-red-400"></p>
+                        </div>
+                        <div class="bg-orange-500/10 rounded p-2">
+                            <p class="text-xs text-slate-400">大单</p>
+                            <p id="flow-big" class="text-sm font-bold text-orange-400"></p>
+                        </div>
+                        <div class="bg-blue-500/10 rounded p-2">
+                            <p class="text-xs text-slate-400">中单</p>
+                            <p id="flow-mid" class="text-sm font-bold text-blue-400"></p>
+                        </div>
+                        <div class="bg-green-500/10 rounded p-2">
+                            <p class="text-xs text-slate-400">小单</p>
+                            <p id="flow-small" class="text-sm font-bold text-green-400"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Business Pie Chart -->
+                <div class="bg-slate-800 rounded-xl p-5 border border-slate-700 shadow-lg">
+                    <div class="flex items-center gap-2 mb-4">
+                        <i class="fas fa-chart-pie text-violet-500"></i>
+                        <h3 class="font-bold text-white">主营业务构成</h3>
+                    </div>
+                    <div id="business-pie" class="chart-container"></div>
+                </div>
+            </div>
+
+            <!-- K-Line Large Chart -->
+            <div class="bg-slate-800 rounded-xl p-5 border border-slate-700 shadow-lg">
+                <div class="flex items-center gap-2 mb-4">
+                    <i class="fas fa-chart-line text-cyan-500"></i>
+                    <h3 class="font-bold text-white">K线走势（近60日）</h3>
+                    <span class="text-xs text-slate-500 ml-2">含MA5/MA20均线</span>
+                </div>
+                <div id="kline-chart" class="chart-large"></div>
+            </div>
+
+            <!-- News & LHB Row -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- News -->
+                <div class="bg-slate-800 rounded-xl p-5 border border-slate-700 shadow-lg">
+                    <div class="flex items-center gap-2 mb-4">
+                        <i class="fas fa-newspaper text-yellow-500"></i>
+                        <h3 class="font-bold text-white">近期新闻</h3>
+                    </div>
+                    <div id="news-list" class="space-y-3 max-h-[300px] overflow-y-auto"></div>
+                </div>
+
+                <!-- LHB (龙虎榜) -->
+                <div class="bg-slate-800 rounded-xl p-5 border border-slate-700 shadow-lg">
+                    <div class="flex items-center gap-2 mb-4">
+                        <i class="fas fa-dragon text-red-500"></i>
+                        <h3 class="font-bold text-white">龙虎榜</h3>
+                    </div>
+                    <div id="lhb-content" class="text-sm text-slate-400"></div>
+                </div>
+            </div>
+
+            <!-- Financial Summary -->
+            <div class="bg-slate-800 rounded-xl p-5 border border-slate-700 shadow-lg">
+                <div class="flex items-center gap-2 mb-4">
+                    <i class="fas fa-file-invoice-dollar text-blue-500"></i>
+                    <h3 class="font-bold text-white">财务摘要</h3>
+                </div>
+                <div id="financial-content" class="grid grid-cols-3 gap-4"></div>
+            </div>
+        </div>
+
+        <!-- Error State -->
+        <div id="error-state" class="hidden flex flex-col items-center justify-center min-h-[400px]">
+            <i class="fas fa-exclamation-triangle text-4xl text-red-500 mb-4"></i>
+            <p id="error-message" class="text-slate-400"></p>
+            <a href="/" class="mt-4 text-violet-400 hover:text-violet-300">返回首页</a>
+        </div>
+    </main>
+
+    <script>
+        const stockCode = '{{ code }}';
+        const API = window.location.origin;
+
+        document.addEventListener('DOMContentLoaded', function() {
+            loadAnalysisResult();
+        });
+
+        function loadAnalysisResult() {
+            fetch(API + '/api/analysis/result/' + stockCode)
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    if (data.success && data.data) {
+                        renderAnalysis(data.data);
+                    } else {
+                        showError(data.message || '暂无分析数据，请先运行分析');
+                    }
+                })
+                .catch(function(e) {
+                    showError('加载失败: ' + e.message);
+                });
+        }
+
+        function showError(message) {
+            document.getElementById('loading-state').classList.add('hidden');
+            document.getElementById('analysis-content').classList.add('hidden');
+            document.getElementById('error-state').classList.remove('hidden');
+            document.getElementById('error-message').textContent = message;
+        }
+
+        // 全局变量存储分析数据用于投资建议
+        var analysisData = null;
+
+        function renderAnalysis(data) {
+            analysisData = data; // 保存用于投资建议
+            document.getElementById('loading-state').classList.add('hidden');
+            document.getElementById('analysis-content').classList.remove('hidden');
+
+            var blocks = data.blocks || {};
+            var spot = blocks.spot || [];
+            var basic = spot.length > 0 ? spot[0] : {};
+
+            // Header Info
+            var name = basic['名称'] || stockCode;
+            var price = basic['最新价'] || '--';
+            var change = basic['涨跌幅'] || 0;
+            var volume = basic['成交量'] || 0;
+            var amount = basic['成交额'] || 0;
+            var yesterdayVolume = basic['昨收'] ? 0 : 0; // 需要从其他数据获取昨日成交量
+
+            document.getElementById('stock-name').textContent = name;
+            document.getElementById('stock-code').textContent = stockCode;
+            document.getElementById('stock-price').textContent = price;
+            // A股习惯：涨红跌绿
+            document.getElementById('stock-price').className = 'text-4xl font-bold ' + (change >= 0 ? 'text-red-400' : 'text-green-400');
+
+            var changeEl = document.getElementById('stock-change');
+            changeEl.textContent = (change >= 0 ? '+' : '') + change.toFixed(2) + '%';
+            changeEl.className = 'text-lg mt-1 ' + (change >= 0 ? 'text-red-400' : 'text-green-400');
+
+            // 计算换手率（成交量/流通股本 * 100）
+            var turnoverRate = '--';
+            var shareStruct = blocks.share_structure || [];
+            var floatShares = 0;
+            if (shareStruct.length > 0 && volume > 0) {
+                floatShares = shareStruct[0]['已流通股份'] || shareStruct[0]['已上市流通A股'] || 0;
+                if (floatShares > 0) {
+                    turnoverRate = ((volume / floatShares) * 100).toFixed(2) + '%';
+                }
+            }
+            document.getElementById('stock-turnover').textContent = turnoverRate;
+
+            // 计算量比（今日成交量/昨日成交量）
+            var volumeRatio = '--';
+            var klineDaily = blocks.kline_daily || [];
+            if (klineDaily.length >= 2) {
+                var todayVol = volume;
+                var yesterdayVol = klineDaily[klineDaily.length - 2]['volume'] || 0;
+                if (yesterdayVol > 0) {
+                    volumeRatio = (todayVol / yesterdayVol).toFixed(2);
+                }
+            }
+            document.getElementById('stock-volume-ratio').textContent = volumeRatio;
+
+            // 流通市值
+            var marketCap = '--';
+            if (floatShares > 0 && price > 0) {
+                marketCap = ((floatShares * price) / 100000000).toFixed(2) + '亿';
+            }
+            document.getElementById('stock-market-cap').textContent = marketCap;
+
+            // 成交额
+            if (amount > 0) {
+                document.getElementById('stock-amount').textContent = (amount / 100000000).toFixed(2) + '亿';
+            }
+
+            // 行业（从 basic_info 或 zygc 提取）
+            var industry = '--';
+            var basicInfo = blocks.basic_info || [];
+            if (basicInfo.length > 0) {
+                for (var i = 0; i < basicInfo.length; i++) {
+                    if (basicInfo[i]['item'] === '所属行业') {
+                        industry = basicInfo[i]['value'];
+                        break;
+                    }
+                }
+            }
+            // 如果basic_info没有，从fin_abstract或其他来源提取
+            if (industry === '--') {
+                // 尝试从zygc的行业分类推断
+                var zygc = blocks.zygc || [];
+                if (zygc.length > 0) {
+                    // 光伏玻璃 -> 光伏行业
+                    var mainBusiness = zygc[0]['主营构成'] || '';
+                    if (mainBusiness.includes('光伏') || mainBusiness.includes('玻璃')) {
+                        industry = '光伏玻璃';
+                    } else if (mainBusiness.includes('天然气')) {
+                        industry = '天然气';
+                    }
+                }
+            }
+            document.getElementById('industry-text').textContent = industry;
+
+            // 绘制图表
+            renderFundFlowChart(blocks.fund_flow || []);
+            renderBusinessPie(blocks.zygc || []);
+            renderKlineChart(blocks.kline_daily || []);
+            renderNews(blocks.news || []);
+            renderLHB(blocks.lhb || []);
+            renderFinancial(blocks);
+            
+            // 生成投资建议
+            renderInvestmentAdvice();
+        }
+
+        function renderFundFlowChart(data) {
+            if (data.length === 0) return;
+
+            // 取最近20条
+            var recent = data.slice(-20);
+            var dates = recent.map(function(d) { return d['日期'].substring(0, 10); });
+            var mainFlow = recent.map(function(d) { return (d['主力净流入-净额'] || 0) / 100000000; });
+            var superFlow = recent.map(function(d) { return (d['超大单净流入-净额'] || 0) / 100000000; });
+            var bigFlow = recent.map(function(d) { return (d['大单净流入-净额'] || 0) / 100000000; });
+
+            // 最近一天的流向汇总
+            if (recent.length > 0) {
+                var last = recent[recent.length - 1];
+                document.getElementById('flow-super').textContent = formatFlow(last['超大单净流入-净额']);
+                document.getElementById('flow-big').textContent = formatFlow(last['大单净流入-净额']);
+                document.getElementById('flow-mid').textContent = formatFlow(last['中单净流入-净额']);
+                document.getElementById('flow-small').textContent = formatFlow(last['小单净流入-净额']);
+            }
+
+            var chart = echarts.init(document.getElementById('fund-flow-chart'));
+            chart.setOption({
+                tooltip: { trigger: 'axis' },
+                legend: { data: ['主力净流入', '超大单', '大单'], textStyle: { color: '#94a3b8' }, top: 0 },
+                grid: { left: '10%', right: '5%', top: '15%', bottom: '20%' },
+                xAxis: { type: 'category', data: dates, axisLabel: { color: '#64748b', rotate: 45, fontSize: 10 } },
+                yAxis: { type: 'value', name: '亿元', axisLabel: { color: '#64748b' }, splitLine: { lineStyle: { color: '#334155' } } },
+                series: [
+                    { name: '主力净流入', type: 'bar', data: mainFlow, itemStyle: { color: '#ef4444' } },
+                    { name: '超大单', type: 'bar', data: superFlow, itemStyle: { color: '#f97316' } },
+                    { name: '大单', type: 'bar', data: bigFlow, itemStyle: { color: '#eab308' } }
+                ]
+            });
+        }
+
+        function formatFlow(value) {
+            if (!value) return '--';
+            var v = value / 100000000;
+            if (v >= 0) return '+' + v.toFixed(2) + '亿';
+            return v.toFixed(2) + '亿';
+        }
+
+        function renderBusinessPie(data) {
+            if (data.length === 0) return;
+
+            // 取最新报告期，按产品分类
+            var latestDate = data[0]['报告日期'] || '';
+            var products = [];
+            for (var i = 0; i < data.length; i++) {
+                var item = data[i];
+                if (item['报告日期'] === latestDate && item['分类类型'] === '按产品分类') {
+                    products.push({
+                        name: item['主营构成'] || '未知',
+                        value: Math.abs(item['主营收入'] || 0) / 100000000
+                    });
+                }
+            }
+
+            if (products.length === 0) {
+                document.getElementById('business-pie').innerHTML = '<p class="text-slate-500 text-center">暂无主营业务数据</p>';
+                return;
+            }
+
+            var chart = echarts.init(document.getElementById('business-pie'));
+            chart.setOption({
+                tooltip: { trigger: 'item', formatter: '{b}: {c}亿 ({d}%)' },
+                legend: { bottom: 10, textStyle: { color: '#94a3b8', fontSize: 11 } },
+                series: [{
+                    type: 'pie',
+                    radius: ['40%', '70%'],
+                    data: products.slice(0, 6),
+                    label: { fontSize: 11, color: '#e2e8f0', formatter: '{b}\n{d}%' },
+                    color: ['#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6', '#ec4899']
+                }]
+            });
+        }
+
+        function renderKlineChart(data) {
+            if (data.length === 0) return;
+
+            var recent = data.slice(-60);
+            var dates = recent.map(function(d) { return d['date'].substring(0, 10); });
+            var ohlc = recent.map(function(d) { return [d['open'], d['close'], d['low'], d['high']]; });
+            var volumes = recent.map(function(d) { return d['volume'] || 0; });
+            var closes = recent.map(function(d) { return d['close']; });
+
+            // 计算均线
+            var ma5 = calcMA(closes, 5);
+            var ma20 = calcMA(closes, 20);
+
+            var chart = echarts.init(document.getElementById('kline-chart'));
+            chart.setOption({
+                tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
+                legend: { data: ['日K', 'MA5', 'MA20'], textStyle: { color: '#94a3b8' }, top: 0 },
+                grid: [
+                    { left: '8%', right: '8%', top: '10%', height: '50%' },
+                    { left: '8%', right: '8%', top: '65%', height: '20%' }
+                ],
+                xAxis: [
+                    { type: 'category', data: dates, gridIndex: 0, axisLabel: { color: '#64748b', rotate: 45, fontSize: 10 } },
+                    { type: 'category', data: dates, gridIndex: 1, axisLabel: { show: false } }
+                ],
+                yAxis: [
+                    { scale: true, gridIndex: 0, axisLabel: { color: '#64748b' }, splitLine: { lineStyle: { color: '#334155' } } },
+                    { scale: true, gridIndex: 1, axisLabel: { color: '#64748b' }, splitLine: { lineStyle: { color: '#334155' } } }
+                ],
+                dataZoom: [{ type: 'inside', xAxisIndex: [0, 1] }],
+                series: [
+                    { name: '日K', type: 'candlestick', data: ohlc, xAxisIndex: 0, yAxisIndex: 0, itemStyle: { color: '#ef4444', color0: '#22c55e', borderColor: '#ef4444', borderColor0: '#22c55e' } },
+                    { name: 'MA5', type: 'line', data: ma5, xAxisIndex: 0, yAxisIndex: 0, smooth: true, lineStyle: { color: '#f97316', width: 1 }, symbol: 'none' },
+                    { name: 'MA20', type: 'line', data: ma20, xAxisIndex: 0, yAxisIndex: 0, smooth: true, lineStyle: { color: '#3b82f6', width: 1 }, symbol: 'none' },
+                    { name: '成交量', type: 'bar', data: volumes, xAxisIndex: 1, yAxisIndex: 1, itemStyle: { color: '#64748b' } }
+                ]
+            });
+        }
+
+        function calcMA(data, period) {
+            var result = [];
+            for (var i = 0; i < data.length; i++) {
+                if (i < period - 1) {
+                    result.push(null);
+                } else {
+                    var sum = 0;
+                    for (var j = i - period + 1; j <= i; j++) {
+                        sum += data[j];
+                    }
+                    result.push(Math.round(sum / period * 100) / 100);
+                }
+            }
+            return result;
+        }
+
+        function renderNews(data) {
+            var container = document.getElementById('news-list');
+            if (data.length === 0) {
+                container.innerHTML = '<p class="text-slate-500">暂无新闻</p>';
+                return;
+            }
+
+            var html = '';
+            for (var i = 0; i < Math.min(5, data.length); i++) {
+                var news = data[i];
+                var title = news['新闻标题'] || '无标题';
+                var source = news['文章来源'] || '';
+                var time = news['发布时间'] ? news['发布时间'].substring(0, 10) : '';
+                html += '<div class="bg-slate-700/30 rounded-lg p-3 border-l-2 border-yellow-500">';
+                html += '<p class="text-white text-sm">' + title + '</p>';
+                html += '<p class="text-slate-500 text-xs mt-1">' + source + ' · ' + time + '</p>';
+                html += '</div>';
+            }
+            container.innerHTML = html;
+        }
+
+        function renderLHB(data) {
+            var container = document.getElementById('lhb-content');
+            if (!data || data.length === 0) {
+                container.innerHTML = '<p class="text-slate-500">近30日无龙虎榜记录</p>';
+                return;
+            }
+
+            var html = '<div class="space-y-3">';
+            for (var i = 0; i < Math.min(3, data.length); i++) {
+                var item = data[i];
+                html += '<div class="bg-slate-700/30 rounded p-3">';
+                html += '<p class="text-white text-sm">' + (item['日期'] || item['交易日期'] || '') + '</p>';
+                html += '<p class="text-slate-400 text-xs mt-1">买入: ' + formatYuan(item['买入金额'] || item['买入'] || 0) + '</p>';
+                html += '<p class="text-slate-400 text-xs">卖出: ' + formatYuan(item['卖出金额'] || item['卖出'] || 0) + '</p>';
+                html += '</div>';
+            }
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        function formatYuan(value) {
+            if (!value) return '--';
+            return (value / 100000000).toFixed(2) + '亿';
+        }
+
+        function renderFinancial(blocks) {
+            var container = document.getElementById('financial-content');
+            
+            // 优先使用 fin_indicator_ths（按报告期排列）
+            var fin = blocks.fin_indicator_ths || [];
+            var latestFin = fin.length > 0 ? fin[fin.length - 1] : {}; // 取最新报告期
+            
+            // 如果 fin_indicator_ths 没有，尝试 fin_abstract
+            if (!latestFin || Object.keys(latestFin).length === 0) {
+                var finAbs = blocks.fin_abstract || [];
+                latestFin = {};
+                for (var i = 0; i < finAbs.length; i++) {
+                    var item = finAbs[i];
+                    var indicatorName = item['指标'] || '';
+                    var latestValue = item['20260331'] || item['20251231'] || item['20240930'] || '--';
+                    latestFin[indicatorName] = latestValue;
+                }
+            }
+
+            // 提取关键指标
+            var indicators = {};
+            var keys = latestFin ? Object.keys(latestFin) : [];
+            
+            // 市盈率（需要计算或从其他数据获取）
+            indicators['市盈率'] = '--';
+            indicators['市净率'] = latestFin['每股净资产'] ? '--' : '--';
+            
+            // 从最新财务数据提取
+            if (latestFin['净资产收益率-摊薄']) {
+                indicators['净资产收益率'] = latestFin['净资产收益率-摊薄'];
+            } else if (latestFin['净资产收益率']) {
+                indicators['净资产收益率'] = latestFin['净资产收益率'];
+            }
+            
+            if (latestFin['销售毛利率']) {
+                indicators['毛利率'] = latestFin['销售毛利率'];
+            } else if (latestFin['毛利率']) {
+                indicators['毛利率'] = latestFin['毛利率'];
+            }
+            
+            if (latestFin['净利润同比增长率']) {
+                indicators['净利润增长率'] = latestFin['净利润同比增长率'];
+            } else if (latestFin['净利润同比增长']) {
+                indicators['净利润增长率'] = latestFin['净利润同比增长'];
+            }
+            
+            if (latestFin['营业总收入同比增长率']) {
+                indicators['营业收入增长率'] = latestFin['营业总收入同比增长率'];
+            } else if (latestFin['营收同比增长']) {
+                indicators['营业收入增长率'] = latestFin['营收同比增长'];
+            }
+
+            // 计算市盈率和市净率
+            var spot = blocks.spot || [];
+            if (spot.length > 0) {
+                var price = spot[0]['最新价'] || 0;
+                var eps = latestFin['基本每股收益'] || latestFin['每股收益'];
+                var bvps = latestFin['每股净资产'] || 0;
+                
+                if (price > 0 && eps && eps !== false && eps > 0) {
+                    indicators['市盈率'] = Math.round(price / eps);
+                }
+                if (price > 0 && bvps && bvps > 0) {
+                    indicators['市净率'] = Math.round(price / bvps * 100) / 100;
+                }
+            }
+
+            // 从 fin_abstract 补充数据
+            var finAbsData = {};
+            var finAbs = blocks.fin_abstract || [];
+            for (var i = 0; i < finAbs.length; i++) {
+                var item = finAbs[i];
+                finAbsData[item['指标']] = item['20260331'] || item['20251231'] || '--';
+            }
+            
+            // 补充缺失指标
+            if (indicators['净资产收益率'] === undefined || indicators['净资产收益率'] === '--') {
+                indicators['净资产收益率'] = finAbsData['净资产收益率'] || '--';
+            }
+            if (indicators['毛利率'] === undefined || indicators['毛利率'] === '--') {
+                indicators['毛利率'] = finAbsData['毛利率'] || '--';
+            }
+
+            var html = '';
+            var displayKeys = ['市盈率', '市净率', '净资产收益率', '毛利率', '净利润增长率', '营业收入增长率'];
+            for (var i = 0; i < displayKeys.length; i++) {
+                var key = displayKeys[i];
+                var val = indicators[key] || '--';
+                // 格式化数值
+                var displayVal = val;
+                if (typeof val === 'number') {
+                    displayVal = val.toFixed(2);
+                    if (key.includes('率') || key.includes('增长')) {
+                        displayVal = val.toFixed(2) + '%';
+                    }
+                } else if (typeof val === 'string' && val.includes('%')) {
+                    displayVal = val; // 已经是百分比格式
+                }
+                
+                var colorClass = 'text-white';
+                if (key === '净利润增长率' || key === '营业收入增长率') {
+                    if (typeof val === 'number' && val < 0) {
+                        colorClass = 'text-red-400';
+                    } else if (typeof val === 'number' && val > 0) {
+                        colorClass = 'text-emerald-400';
+                    }
+                }
+                if (key === '净资产收益率' && typeof val === 'number') {
+                    if (val > 15) colorClass = 'text-emerald-400';
+                    else if (val < 5) colorClass = 'text-red-400';
+                }
+                
+                html += '<div class="bg-slate-700/30 rounded-lg p-4">';
+                html += '<p class="text-slate-400 text-xs">' + key + '</p>';
+                html += '<p class="text-2xl font-bold ' + colorClass + ' mt-1">' + displayVal + '</p>';
+                html += '</div>';
+            }
+            container.innerHTML = html;
+        }
+
+        // 投资建议生成
+        function renderInvestmentAdvice() {
+            if (!analysisData) return;
+            
+            var blocks = analysisData.blocks || {};
+            var spot = blocks.spot || [];
+            var basic = spot.length > 0 ? spot[0] : {};
+            
+            // 收集分析因子
+            var factors = {
+                price: basic['最新价'] || 0,
+                change: basic['涨跌幅'] || 0,
+                volume: basic['成交量'] || 0,
+                turnover: 0,
+                volumeRatio: 0,
+                fundFlow: 0,
+                klineTrend: 'neutral',
+                financialHealth: 'unknown',
+                newsSentiment: 'neutral'
+            };
+            
+            // 换手率
+            var shareStruct = blocks.share_structure || [];
+            if (shareStruct.length > 0 && factors.volume > 0) {
+                var floatShares = shareStruct[0]['已流通股份'] || 0;
+                if (floatShares > 0) {
+                    factors.turnover = (factors.volume / floatShares) * 100;
+                }
+            }
+            
+            // 量比
+            var klineDaily = blocks.kline_daily || [];
+            if (klineDaily.length >= 2) {
+                var yesterdayVol = klineDaily[klineDaily.length - 2]['volume'] || 0;
+                if (yesterdayVol > 0) {
+                    factors.volumeRatio = factors.volume / yesterdayVol;
+                }
+            }
+            
+            // 资金流向（主力净流入）
+            var fundFlow = blocks.fund_flow || [];
+            if (fundFlow.length > 0) {
+                var lastFlow = fundFlow[fundFlow.length - 1];
+                var mainInflow = lastFlow['主力净流入-净额'] || 0;
+                factors.fundFlow = mainInflow / 100000000; // 转亿元
+            }
+            
+            // K线趋势分析（MA均线）
+            if (klineDaily.length >= 20) {
+                var recent = klineDaily.slice(-20);
+                var closes = recent.map(function(d) { return d['close']; });
+                var ma5 = closes.slice(-5).reduce(function(a,b) { return a+b; }, 0) / 5;
+                var ma20 = closes.slice(-20).reduce(function(a,b) { return a+b; }, 0) / 20;
+                var currentPrice = closes[closes.length - 1];
+                
+                if (currentPrice > ma5 && ma5 > ma20) {
+                    factors.klineTrend = 'upward'; // 多头排列
+                } else if (currentPrice < ma5 && ma5 < ma20) {
+                    factors.klineTrend = 'downward'; // 空头排列
+                }
+            }
+            
+            // 财务健康度
+            var fin = blocks.fin_indicator_ths || [];
+            if (fin.length > 0) {
+                var latestFin = fin[fin.length - 1];
+                var roe = latestFin['净资产收益率-摊薄'] || 0;
+                var grossMargin = parseFloat(latestFin['销售毛利率']) || 0;
+                var debtRatio = parseFloat(latestFin['资产负债率']) || 0;
+                
+                if (roe > 10 && grossMargin > 20 && debtRatio < 60) {
+                    factors.financialHealth = 'good';
+                } else if (roe < 5 || debtRatio > 70) {
+                    factors.financialHealth = 'poor';
+                } else {
+                    factors.financialHealth = 'moderate';
+                }
+            }
+            
+            // 新闻情绪（简单判断）
+            var news = blocks.news || [];
+            if (news.length > 0) {
+                var negativeKeywords = ['亏损', '下降', '跌', '风险', '诉讼', '违规'];
+                var positiveKeywords = ['增长', '突破', '涨停', '利好', '合作', '签约'];
+                var sentimentScore = 0;
+                for (var i = 0; i < news.length; i++) {
+                    var title = news[i]['新闻标题'] || '';
+                    for (var j = 0; j < negativeKeywords.length; j++) {
+                        if (title.includes(negativeKeywords[j])) sentimentScore--;
+                    }
+                    for (var j = 0; j < positiveKeywords.length; j++) {
+                        if (title.includes(positiveKeywords[j])) sentimentScore++;
+                    }
+                }
+                factors.newsSentiment = sentimentScore > 1 ? 'positive' : (sentimentScore < -1 ? 'negative' : 'neutral');
+            }
+            
+            // 生成建议
+            var recommendation = generateRecommendation(factors);
+            
+            // 添加到页面
+            var adviceHtml = '<div class="bg-gradient-to-r from-slate-800 to-slate-900 rounded-xl p-6 border border-slate-700 shadow-lg">';
+            adviceHtml += '<div class="flex items-center justify-between mb-4">';
+            adviceHtml += '<div class="flex items-center gap-2">';
+            adviceHtml += '<i class="fas fa-lightbulb text-yellow-500 text-xl"></i>';
+            adviceHtml += '<h3 class="font-bold text-white text-lg">投资建议</h3>';
+            adviceHtml += '</div>';
+            adviceHtml += '<span class="px-4 py-2 rounded-full text-sm font-bold ' + recommendation.badgeClass + '">' + recommendation.action + '</span>';
+            adviceHtml += '</div>';
+            adviceHtml += '<p class="text-slate-300 text-sm leading-relaxed mb-4">' + recommendation.summary + '</p>';
+            adviceHtml += '<div class="grid grid-cols-2 gap-4">';
+            
+            // 关键因子展示
+            adviceHtml += '<div class="bg-slate-700/30 rounded p-3">';
+            adviceHtml += '<p class="text-xs text-slate-400 mb-1"><i class="fas fa-money-bill-wave mr-1"></i>资金流向</p>';
+            // 资金流向 - A股习惯：流入红色（好事），流出绿色（坏事）
+            adviceHtml += '<p class="text-sm font-bold ' + (factors.fundFlow > 0 ? 'text-red-400' : 'text-green-400') + '">';
+            adviceHtml += factors.fundFlow > 0 ? '主力净流入 +' + factors.fundFlow.toFixed(2) + '亿' : '主力净流出 ' + factors.fundFlow.toFixed(2) + '亿';
+            adviceHtml += '</p></div>';
+            
+            adviceHtml += '<div class="bg-slate-700/30 rounded p-3">';
+            adviceHtml += '<p class="text-xs text-slate-400 mb-1"><i class="fas fa-chart-line mr-1"></i>K线趋势</p>';
+            // K线趋势 - A股习惯：上涨趋势红色，下跌趋势绿色
+            adviceHtml += '<p class="text-sm font-bold ' + (factors.klineTrend === 'upward' ? 'text-red-400' : (factors.klineTrend === 'downward' ? 'text-green-400' : 'text-slate-300')) + '">';
+            adviceHtml += factors.klineTrend === 'upward' ? '多头排列（MA5>MA20）' : (factors.klineTrend === 'downward' ? '空头排列' : '震荡整理');
+            adviceHtml += '</p></div>';
+            
+            adviceHtml += '<div class="bg-slate-700/30 rounded p-3">';
+            adviceHtml += '<p class="text-xs text-slate-400 mb-1"><i class="fas fa-chart-pie mr-1"></i>换手率/量比</p>';
+            adviceHtml += '<p class="text-sm font-bold text-white">' + factors.turnover.toFixed(2) + '% / ' + factors.volumeRatio.toFixed(2) + '</p>';
+            adviceHtml += '</div>';
+            
+            adviceHtml += '<div class="bg-slate-700/30 rounded p-3">';
+            adviceHtml += '<p class="text-xs text-slate-400 mb-1"><i class="fas fa-file-invoice-dollar mr-1"></i>财务健康</p>';
+            adviceHtml += '<p class="text-sm font-bold ' + (factors.financialHealth === 'good' ? 'text-emerald-400' : (factors.financialHealth === 'poor' ? 'text-red-400' : 'text-yellow-400')) + '">';
+            adviceHtml += factors.financialHealth === 'good' ? '财务稳健' : (factors.financialHealth === 'poor' ? '财务风险' : '财务一般');
+            adviceHtml += '</p></div>';
+            
+            adviceHtml += '</div>';
+            
+            // 风险提示
+            adviceHtml += '<div class="mt-4 bg-red-500/10 border border-red-500/30 rounded p-3">';
+            adviceHtml += '<p class="text-xs text-red-400"><i class="fas fa-exclamation-triangle mr-1"></i>风险提示：' + recommendation.riskWarning + '</p>';
+            adviceHtml += '</div>';
+            
+            adviceHtml += '</div>';
+            
+            // 在财务摘要后面插入
+            var financialSection = document.getElementById('financial-content').parentElement.parentElement;
+            financialSection.insertAdjacentHTML('afterend', adviceHtml);
+        }
+        
+        function generateRecommendation(factors) {
+            var score = 0;
+            var reasons = [];
+            
+            // 评分逻辑
+            // 1. 资金流向 (+30/-30)
+            if (factors.fundFlow > 0.5) {
+                score += 30;
+                reasons.push('主力资金大幅净流入');
+            } else if (factors.fundFlow > 0) {
+                score += 15;
+                reasons.push('主力资金小幅流入');
+            } else if (factors.fundFlow < -0.5) {
+                score -= 30;
+                reasons.push('主力资金大幅流出');
+            } else if (factors.fundFlow < 0) {
+                score -= 15;
+            }
+            
+            // 2. K线趋势 (+20/-20)
+            if (factors.klineTrend === 'upward') {
+                score += 20;
+                reasons.push('均线多头排列');
+            } else if (factors.klineTrend === 'downward') {
+                score -= 20;
+                reasons.push('均线空头排列');
+            }
+            
+            // 3. 换手率和量比 (+15/-10)
+            if (factors.turnover > 5 && factors.volumeRatio > 2) {
+                score += 15;
+                reasons.push('高换手率+大放量');
+            } else if (factors.turnover < 2) {
+                score -= 10;
+                reasons.push('换手率偏低');
+            }
+            
+            // 4. 财务健康 (+15/-20)
+            if (factors.financialHealth === 'good') {
+                score += 15;
+                reasons.push('财务状况良好');
+            } else if (factors.financialHealth === 'poor') {
+                score -= 20;
+                reasons.push('财务风险较高');
+            }
+            
+            // 5. 新闻情绪 (+10/-10)
+            if (factors.newsSentiment === 'positive') {
+                score += 10;
+            } else if (factors.newsSentiment === 'negative') {
+                score -= 10;
+                reasons.push('近期负面新闻');
+            }
+            
+            // 生成建议
+            var result = {
+                action: '',
+                badgeClass: '',
+                summary: '',
+                riskWarning: '股市有风险，投资需谨慎。以上分析仅供参考，不构成投资建议。'
+            };
+            
+            if (score >= 50) {
+                result.action = '建议关注';
+                result.badgeClass = 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50';
+                result.summary = '综合评分较高(' + score + '分)，技术面与资金面形成共振。' + reasons.join('；') + '。短线可考虑择机介入，但需注意仓位控制。';
+            } else if (score >= 20) {
+                result.action = '谨慎观望';
+                result.badgeClass = 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/50';
+                result.summary = '综合评分中等(' + score + '分)，部分指标向好但信号不够明确。' + reasons.join('；') + '。建议等待更明确的买入信号。';
+            } else if (score >= 0) {
+                result.action = '暂不建议';
+                result.badgeClass = 'bg-orange-500/20 text-orange-400 border border-orange-500/50';
+                result.summary = '综合评分较低(' + score + '分)，多项指标偏弱。' + reasons.join('；') + '。当前不宜追高，建议等待回调或基本面改善。';
+            } else {
+                result.action = '风险规避';
+                result.badgeClass = 'bg-red-500/20 text-red-400 border border-red-500/50';
+                result.summary = '综合评分负值(' + score + '分)，风险信号明显。' + reasons.join('；') + '。建议规避或止损离场。';
+            }
+            
+            return result;
+        }
+
+        // 响应式图表
+        window.addEventListener('resize', function() {
+            var charts = ['fund-flow-chart', 'business-pie', 'kline-chart'];
+            charts.forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el && echarts.getInstanceByDom(el)) {
+                    echarts.getInstanceByDom(el).resize();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
