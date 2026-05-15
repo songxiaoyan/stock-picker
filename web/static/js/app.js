@@ -484,6 +484,7 @@ function loadAnalysisHistory() {
 // Call on page load
 document.addEventListener('DOMContentLoaded', function() {
     loadAnalysisHistory();
+    loadAllMarketData();  // 加载大盘看板数据
 });
 
 function updateExistingButtons() {

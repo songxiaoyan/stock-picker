@@ -526,6 +526,12 @@ def api_analyze(code):
                     stock_name = r['名称']
                     break
             
+            # Also check limit_up results
+            for r in state_limitup.get('results', []):
+                if r['代码'] == code:
+                    stock_name = r['名称']
+                    break
+
             # Run stock_full_report.py
             proc = subprocess.Popen(
                 ['python3', ANALYSIS_SCRIPT, code],
@@ -557,6 +563,16 @@ def api_analyze(code):
                 analysis_tasks[task_id]['progress'] = 100
                 analysis_tasks[task_id]['message'] = '分析完成'
                 analysis_tasks[task_id]['result_path'] = result_file
+                
+                # Get stock name from result file (most reliable)
+                try:
+                    with open(result_file, 'r', encoding='utf-8') as f:
+                        result_data = json.load(f)
+                    stock_info = result_data.get('stock_info', {})
+                    if stock_info and '名称' in stock_info:
+                        stock_name = stock_info['名称']
+                except:
+                    pass
                 
                 # Save to history
                 history_record = {

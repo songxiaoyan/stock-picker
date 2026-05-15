@@ -1,0 +1,9 @@
+{
+  "change_min": 3,
+  "change_max": 5,
+  "volume_ratio_min": 1,
+  "turnover_min": 5,
+  "turnover_max": 10,
+  "market_cap_min": 50,
+  "market_cap_max": 200
+}
