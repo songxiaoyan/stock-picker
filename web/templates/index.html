@@ -64,9 +64,14 @@
                             <i class="fas fa-fire text-red-500"></i> 短线涨停复盘
                         </button>
                     </div>
-                    <button onclick="runActiveStrategy()" id="btn-run-action" class="bg-violet-600 hover:bg-violet-500 text-white text-xs px-5 py-2 rounded shadow-lg transition-all flex items-center gap-2">
-                        <i class="fas fa-play"></i> 开始执行
-                    </button>
+                    <div class="flex items-center gap-3">
+                        <button onclick="showScreenParamsModal()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs px-3 py-2 rounded transition-all flex items-center gap-2">
+                            <i class="fas fa-sliders-h"></i> 参数
+                        </button>
+                        <button onclick="runActiveStrategy()" id="btn-run-action" class="bg-violet-600 hover:bg-violet-500 text-white text-xs px-5 py-2 rounded shadow-lg transition-all flex items-center gap-2">
+                            <i class="fas fa-play"></i> 开始执行
+                        </button>
+                    </div>
                 </div>
 
                 <div class="flex-1 overflow-hidden relative flex flex-col">
@@ -162,6 +167,63 @@
         <!-- Right Column -->
         <aside class="col-span-12 lg:col-span-3 bg-slate-900 flex flex-col overflow-hidden">
             
+            <!-- 大盘看板 -->
+            <div class="p-3 border-b border-slate-700 bg-slate-800/30">
+                <h2 class="text-sm font-bold text-slate-200 mb-2"><i class="fas fa-chart-bar text-cyan-500 mr-2"></i>大盘指数</h2>
+                <div id="market-index" class="grid grid-cols-3 gap-2 text-center">
+                    <div class="bg-slate-800 rounded p-2 border border-slate-700">
+                        <p class="text-xs text-slate-400">上证</p>
+                        <p id="index-sh" class="text-sm font-bold text-white">--</p>
+                        <p id="index-sh-change" class="text-xs">--</p>
+                    </div>
+                    <div class="bg-slate-800 rounded p-2 border border-slate-700">
+                        <p class="text-xs text-slate-400">深证</p>
+                        <p id="index-sz" class="text-sm font-bold text-white">--</p>
+                        <p id="index-sz-change" class="text-xs">--</p>
+                    </div>
+                    <div class="bg-slate-800 rounded p-2 border border-slate-700">
+                        <p class="text-xs text-slate-400">创业板</p>
+                        <p id="index-cyb" class="text-sm font-bold text-white">--</p>
+                        <p id="index-cyb-change" class="text-xs">--</p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2 mt-2 text-xs">
+                    <div class="bg-slate-800 rounded p-2 border border-slate-700">
+                        <p class="text-slate-400">北向资金</p>
+                        <p id="north-fund" class="text-sm font-bold text-emerald-400">--</p>
+                    </div>
+                    <div class="bg-slate-800 rounded p-2 border border-slate-700">
+                        <p class="text-slate-400">涨跌停</p>
+                        <p id="limit-stat" class="text-sm"><span id="limit-up" class="text-red-400">--</span>/<span id="limit-down" class="text-green-400">--</span></p>
+                    </div>
+                </div>
+                <!-- 市场情绪 -->
+                <div class="mt-2">
+                    <div class="flex items-center justify-between mb-1">
+                        <p class="text-xs text-slate-400">市场强度</p>
+                        <span id="market-strength" class="text-xs font-bold text-slate-300">--</span>
+                    </div>
+                    <div class="w-full bg-slate-700 rounded-full h-1">
+                        <div id="market-strength-bar" class="bg-violet-500 h-1 rounded-full w-0 transition-all"></div>
+                    </div>
+                </div>
+                <!-- 领涨领跌板块 -->
+                <div class="mt-2 grid grid-cols-2 gap-2">
+                    <div>
+                        <p class="text-xs text-red-400 mb-1"><i class="fas fa-arrow-up"></i> 领涨</p>
+                        <div id="leading-sectors" class="text-xs space-y-0.5">
+                            <p class="text-slate-500">加载中...</p>
+                        </div>
+                    </div>
+                    <div>
+                        <p class="text-xs text-green-400 mb-1"><i class="fas fa-arrow-down"></i> 领跌</p>
+                        <div id="lagging-sectors" class="text-xs space-y-0.5">
+                            <p class="text-slate-500">加载中...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="p-4 border-b border-slate-700 bg-slate-800/30">
                 <div class="flex justify-between items-center mb-2">
                     <h2 class="text-sm font-bold text-slate-200"><i class="fas fa-tachometer-alt text-blue-500 mr-2"></i>系统状态</h2>
@@ -171,6 +233,40 @@
                     <div id="main-progress-bar" class="bg-blue-500 h-1.5 rounded-full w-0 transition-all duration-500"></div>
                 </div>
                 <p id="status-text" class="text-[10px] text-slate-400 text-right">等待操作</p>
+            </div>
+
+            <!-- 我的持仓 -->
+            <div class="p-3 border-b border-slate-700 bg-slate-800/30">
+                <div class="flex justify-between items-center mb-2">
+                    <h2 class="text-sm font-bold text-slate-200"><i class="fas fa-wallet text-yellow-500 mr-2"></i>我的持仓</h2>
+                    <button onclick="showAddPositionModal()" class="text-xs bg-violet-600 hover:bg-violet-500 text-white px-2 py-1 rounded">
+                        <i class="fas fa-plus"></i> 添加
+                    </button>
+                </div>
+                <div id="positions-list" class="space-y-1 max-h-[120px] overflow-y-auto">
+                    <p class="text-slate-500 text-xs text-center py-2">暂无持仓记录</p>
+                </div>
+                <div id="positions-summary" class="mt-2 pt-2 border-t border-slate-700 text-xs hidden">
+                    <div class="flex justify-between">
+                        <span class="text-slate-400">总市值</span>
+                        <span id="total-value" class="text-white font-bold">--</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-400">总盈亏</span>
+                        <span id="total-profit" class="font-bold">--</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 关注股池 -->
+            <div class="p-3 border-b border-slate-700 bg-slate-800/30">
+                <div class="flex justify-between items-center mb-2">
+                    <h2 class="text-sm font-bold text-slate-200"><i class="fas fa-star text-pink-500 mr-2"></i>关注股池</h2>
+                    <span id="watchlist-count" class="text-xs text-slate-400">0 只</span>
+                </div>
+                <div id="watchlist" class="space-y-1 max-h-[100px] overflow-y-auto">
+                    <p class="text-slate-500 text-xs text-center py-2">点击股票行的☆添加关注</p>
+                </div>
             </div>
 
             <div class="p-4 border-b border-slate-700 bg-slate-800/30">
@@ -183,9 +279,23 @@
                             <div class="w-8 h-4 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-violet-600"></div>
                         </label>
                     </div>
-                    <div class="grid grid-cols-2 gap-2">
-                        <input type="number" id="sch-hour" value="14" class="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-center text-white">
-                        <input type="number" id="sch-min" value="30" class="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-center text-white">
+                    <!-- 多时间推送 -->
+                    <div class="space-y-1">
+                        <p class="text-xs text-slate-400">推送时间点</p>
+                        <div class="flex gap-1">
+                            <label class="flex items-center gap-1 bg-slate-800 px-2 py-1 rounded border border-slate-700 text-xs">
+                                <input type="checkbox" id="push-930" class="accent-violet-500"> 9:30
+                            </label>
+                            <label class="flex items-center gap-1 bg-slate-800 px-2 py-1 rounded border border-slate-700 text-xs">
+                                <input type="checkbox" id="push-1030" class="accent-violet-500"> 10:30
+                            </label>
+                            <label class="flex items-center gap-1 bg-slate-800 px-2 py-1 rounded border border-slate-700 text-xs">
+                                <input type="checkbox" id="push-1400" class="accent-violet-500"> 14:00
+                            </label>
+                            <label class="flex items-center gap-1 bg-slate-800 px-2 py-1 rounded border border-slate-700 text-xs">
+                                <input type="checkbox" id="push-1430" checked class="accent-violet-500"> 14:30
+                            </label>
+                        </div>
                     </div>
                     <button onclick="saveSchedule()" class="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs py-1.5 rounded transition-colors">保存设置</button>
                 </div>
@@ -195,6 +305,170 @@
                 <h2 class="text-sm font-bold text-slate-200 mb-3"><i class="fas fa-history text-emerald-500 mr-2"></i>最近分析</h2>
                 <div id="analysis-history-list" class="space-y-1">
                     <p class="text-slate-500 text-xs text-center py-2">暂无分析记录</p>
+                </div>
+            </div>
+
+            <!-- 添加持仓弹窗 -->
+            <div id="add-position-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+                <div class="bg-slate-800 rounded-xl p-5 w-[350px] border border-slate-600 shadow-xl">
+                    <h3 class="text-lg font-bold text-white mb-4"><i class="fas fa-plus-circle text-violet-500 mr-2"></i>添加持仓</h3>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="text-xs text-slate-400 mb-1">股票代码</label>
+                            <input type="text" id="pos-code" placeholder="如600519" class="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-white">
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-400 mb-1">股票名称</label>
+                            <input type="text" id="pos-name" placeholder="如贵州茅台" class="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-white">
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="text-xs text-slate-400 mb-1">买入价</label>
+                                <input type="number" id="pos-price" step="0.01" placeholder="0.00" class="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-white">
+                            </div>
+                            <div>
+                                <label class="text-xs text-slate-400 mb-1">数量</label>
+                                <input type="number" id="pos-qty" placeholder="100" class="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-white">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="text-xs text-slate-400 mb-1">止损价（可选）</label>
+                                <input type="number" id="pos-stop-loss" step="0.01" placeholder="0.00" class="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-white">
+                            </div>
+                            <div>
+                                <label class="text-xs text-slate-400 mb-1">止盈价（可选）</label>
+                                <input type="number" id="pos-stop-profit" step="0.01" placeholder="0.00" class="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-white">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex gap-2 mt-4">
+                        <button onclick="addPosition()" class="flex-1 bg-violet-600 hover:bg-violet-500 text-white py-2 rounded text-sm">确认添加</button>
+                        <button onclick="hideAddPositionModal()" class="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 py-2 rounded text-sm">取消</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 卖出弹窗 -->
+            <div id="sell-position-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+                <div class="bg-slate-800 rounded-xl p-5 w-[350px] border border-slate-600 shadow-xl">
+                    <h3 class="text-lg font-bold text-white mb-4"><i class="fas fa-minus-circle text-red-500 mr-2"></i>卖出持仓</h3>
+                    <div class="space-y-3">
+                        <div class="bg-slate-700/50 rounded p-3">
+                            <p class="text-xs text-slate-400">当前持仓</p>
+                            <p id="sell-pos-info" class="text-sm text-white font-bold"></p>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="text-xs text-slate-400 mb-1">卖出数量</label>
+                                <input type="number" id="sell-qty" placeholder="100" class="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-white">
+                            </div>
+                            <div>
+                                <label class="text-xs text-slate-400 mb-1">卖出价格</label>
+                                <input type="number" id="sell-price" step="0.01" placeholder="当前价" class="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-white">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex gap-2 mt-4">
+                        <button onclick="sellPosition()" class="flex-1 bg-red-600 hover:bg-red-500 text-white py-2 rounded text-sm">确认卖出</button>
+                        <button onclick="hideSellPositionModal()" class="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 py-2 rounded text-sm">取消</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 筛选参数配置弹窗 -->
+            <div id="screen-params-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+                <div class="bg-slate-800 rounded-xl p-5 w-[400px] border border-slate-600 shadow-xl">
+                    <h3 class="text-lg font-bold text-white mb-4"><i class="fas fa-sliders-h text-cyan-500 mr-2"></i>筛选参数配置</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="text-xs text-slate-400 mb-2 block">涨幅范围 (%)</label>
+                            <div class="grid grid-cols-2 gap-3">
+                                <input type="number" id="param-change-min" value="3" step="0.5" class="bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-white">
+                                <input type="number" id="param-change-max" value="5" step="0.5" class="bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-white">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-400 mb-2 block">量比最低</label>
+                            <input type="number" id="param-volume-ratio" value="1" step="0.1" class="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-white">
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-400 mb-2 block">换手率范围 (%)</label>
+                            <div class="grid grid-cols-2 gap-3">
+                                <input type="number" id="param-turnover-min" value="5" step="1" class="bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-white">
+                                <input type="number" id="param-turnover-max" value="10" step="1" class="bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-white">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-400 mb-2 block">市值范围 (亿)</label>
+                            <div class="grid grid-cols-2 gap-3">
+                                <input type="number" id="param-cap-min" value="50" step="10" class="bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-white">
+                                <input type="number" id="param-cap-max" value="200" step="10" class="bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-white">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex gap-2 mt-5">
+                        <button onclick="saveScreenParams()" class="flex-1 bg-violet-600 hover:bg-violet-500 text-white py-2 rounded text-sm">保存参数</button>
+                        <button onclick="hideScreenParamsModal()" class="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 py-2 rounded text-sm">取消</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 筛选历史弹窗 -->
+            <div id="screen-history-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+                <div class="bg-slate-800 rounded-xl p-5 w-[500px] max-h-[70vh] border border-slate-600 shadow-xl">
+                    <h3 class="text-lg font-bold text-white mb-4"><i class="fas fa-history text-emerald-500 mr-2"></i>筛选历史记录</h3>
+                    <div id="screen-history-list" class="space-y-2 max-h-[50vh] overflow-y-auto">
+                        <p class="text-slate-500 text-xs text-center py-4">暂无历史记录</p>
+                    </div>
+                    <div class="mt-4">
+                        <button onclick="hideScreenHistoryModal()" class="w-full bg-slate-700 hover:bg-slate-600 text-slate-300 py-2 rounded text-sm">关闭</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 价格预警弹窗 -->
+            <div id="price-alert-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+                <div class="bg-slate-800 rounded-xl p-5 w-[350px] border border-slate-600 shadow-xl">
+                    <h3 class="text-lg font-bold text-white mb-4"><i class="fas fa-bell text-yellow-500 mr-2"></i>设置价格预警</h3>
+                    <div class="space-y-3">
+                        <div class="bg-slate-700/50 rounded p-3">
+                            <p class="text-xs text-slate-400">股票信息</p>
+                            <p id="alert-stock-info" class="text-sm text-white font-bold"></p>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="text-xs text-slate-400 mb-1">目标价（上涨）</label>
+                                <input type="number" id="alert-target-up" step="0.01" placeholder="高于当前价" class="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-white">
+                            </div>
+                            <div>
+                                <label class="text-xs text-slate-400 mb-1">目标价（下跌）</label>
+                                <input type="number" id="alert-target-down" step="0.01" placeholder="低于当前价" class="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-white">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex gap-2 mt-4">
+                        <button onclick="setPriceAlert()" class="flex-1 bg-violet-600 hover:bg-violet-500 text-white py-2 rounded text-sm">设置预警</button>
+                        <button onclick="hidePriceAlertModal()" class="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 py-2 rounded text-sm">取消</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 板块对比弹窗 -->
+            <div id="sector-compare-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+                <div class="bg-slate-800 rounded-xl p-5 w-[600px] max-h-[80vh] border border-slate-600 shadow-xl">
+                    <h3 class="text-lg font-bold text-white mb-4"><i class="fas fa-chart-pie text-blue-500 mr-2"></i>板块对比分析</h3>
+                    <div class="mb-3">
+                        <select id="compare-sector-select" class="w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm text-white">
+                            <option value="">选择板块...</option>
+                        </select>
+                    </div>
+                    <div id="sector-compare-content" class="max-h-[60vh] overflow-y-auto">
+                        <p class="text-slate-500 text-xs text-center py-4">请选择板块进行对比</p>
+                    </div>
+                    <div class="mt-4">
+                        <button onclick="hideSectorCompareModal()" class="w-full bg-slate-700 hover:bg-slate-600 text-slate-300 py-2 rounded text-sm">关闭</button>
+                    </div>
                 </div>
             </div>
 

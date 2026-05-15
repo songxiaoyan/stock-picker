@@ -595,6 +595,673 @@ def api_analysis_result(code):
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
 
+# ========== 持仓管理模块 ==========
+POSITIONS_FILE = os.path.join(PROJECT_DIR, "positions.json")
+
+def load_positions():
+    """加载持仓数据"""
+    try:
+        if os.path.exists(POSITIONS_FILE):
+            with open(POSITIONS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return []
+    except:
+        return []
+
+def save_positions(positions):
+    """保存持仓数据"""
+    try:
+        with open(POSITIONS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(positions, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        print(f"保存持仓失败: {e}")
+        return False
+
+def get_stock_realtime_price(code):
+    """获取股票实时价格"""
+    try:
+        market = 'sh' if code.startswith('6') else 'sz'
+        url = f"http://qt.gtimg.cn/q={market}{code}"
+        resp = requests.get(url, timeout=5)
+        lines = resp.text.strip().split('\n')
+        for line in lines:
+            if line.startswith('v_'):
+                parts = line.split('="')
+                if len(parts) >= 2:
+                    data = parts[1].replace('"', '').split('~')
+                    if len(data) >= 4:
+                        return float(data[3]) if data[3] else 0
+        return 0
+    except:
+        return 0
+
+@app.route('/api/positions', methods=['GET'])
+def api_get_positions():
+    """获取持仓列表（带实时价格和盈亏计算）"""
+    positions = load_positions()
+    
+    # 刷新实时价格和盈亏
+    for pos in positions:
+        current_price = get_stock_realtime_price(pos['code'])
+        pos['current_price'] = current_price
+        pos['current_value'] = current_price * pos['quantity']
+        pos['profit'] = (current_price - pos['buy_price']) * pos['quantity']
+        pos['profit_rate'] = ((current_price - pos['buy_price']) / pos['buy_price'] * 100) if pos['buy_price'] > 0 else 0
+    
+    return jsonify({'success': True, 'positions': positions})
+
+@app.route('/api/positions/add', methods=['POST'])
+def api_add_position():
+    """添加持仓"""
+    data = request.json
+    code = data.get('code', '').strip()
+    name = data.get('name', '').strip()
+    buy_price = float(data.get('buy_price', 0))
+    quantity = int(data.get('quantity', 0))
+    buy_date = data.get('buy_date', datetime.now().strftime('%Y-%m-%d'))
+    stop_loss = float(data.get('stop_loss', 0))  # 止损价
+    stop_profit = float(data.get('stop_profit', 0))  # 止盈价
+    
+    if not code or buy_price <= 0 or quantity <= 0:
+        return jsonify({'success': False, 'message': '参数不完整或无效'})
+    
+    positions = load_positions()
+    
+    # 检查是否已持有
+    for pos in positions:
+        if pos['code'] == code:
+            # 已持有，更新数量和均价
+            total_cost = pos['buy_price'] * pos['quantity'] + buy_price * quantity
+            total_quantity = pos['quantity'] + quantity
+            pos['buy_price'] = total_cost / total_quantity
+            pos['quantity'] = total_quantity
+            pos['buy_date'] = buy_date
+            save_positions(positions)
+            return jsonify({'success': True, 'message': '持仓已更新（加仓）', 'position': pos})
+    
+    # 新持仓
+    new_pos = {
+        'code': code,
+        'name': name,
+        'buy_price': buy_price,
+        'quantity': quantity,
+        'buy_date': buy_date,
+        'stop_loss': stop_loss,
+        'stop_profit': stop_profit,
+        'current_price': buy_price,  # 初始为买入价
+        'current_value': buy_price * quantity,
+        'profit': 0,
+        'profit_rate': 0
+    }
+    positions.append(new_pos)
+    save_positions(positions)
+    
+    return jsonify({'success': True, 'message': '持仓添加成功', 'position': new_pos})
+
+@app.route('/api/positions/sell', methods=['POST'])
+def api_sell_position():
+    """卖出持仓（部分或全部）"""
+    data = request.json
+    code = data.get('code', '').strip()
+    sell_quantity = int(data.get('quantity', 0))
+    sell_price = float(data.get('sell_price', 0))
+    
+    if not code or sell_quantity <= 0:
+        return jsonify({'success': False, 'message': '参数无效'})
+    
+    positions = load_positions()
+    
+    for i, pos in enumerate(positions):
+        if pos['code'] == code:
+            if sell_quantity > pos['quantity']:
+                return jsonify({'success': False, 'message': '卖出数量超过持有数量'})
+            
+            # 计算本次卖出盈亏
+            sell_profit = (sell_price - pos['buy_price']) * sell_quantity
+            
+            if sell_quantity == pos['quantity']:
+                # 全部卖出，删除持仓
+                positions.pop(i)
+                save_positions(positions)
+                return jsonify({
+                    'success': True,
+                    'message': f'已全部卖出，盈亏: {sell_profit:.2f}元',
+                    'sell_profit': sell_profit
+                })
+            else:
+                # 部分卖出
+                pos['quantity'] -= sell_quantity
+                pos['current_value'] = pos['current_price'] * pos['quantity']
+                save_positions(positions)
+                return jsonify({
+                    'success': True,
+                    'message': f'已卖出{sell_quantity}股，本次盈亏: {sell_profit:.2f}元',
+                    'sell_profit': sell_profit,
+                    'position': pos
+                })
+    
+    return jsonify({'success': False, 'message': '未找到该持仓'})
+
+@app.route('/api/positions/delete', methods=['POST'])
+def api_delete_position():
+    """删除持仓记录"""
+    data = request.json
+    code = data.get('code', '').strip()
+    
+    if not code:
+        return jsonify({'success': False, 'message': '股票代码无效'})
+    
+    positions = load_positions()
+    positions = [p for p in positions if p['code'] != code]
+    save_positions(positions)
+    
+    return jsonify({'success': True, 'message': '持仓已删除'})
+
+@app.route('/api/positions/update', methods=['POST'])
+def api_update_position():
+    """更新持仓止损止盈"""
+    data = request.json
+    code = data.get('code', '').strip()
+    stop_loss = float(data.get('stop_loss', 0))
+    stop_profit = float(data.get('stop_profit', 0))
+    
+    if not code:
+        return jsonify({'success': False, 'message': '股票代码无效'})
+    
+    positions = load_positions()
+    
+    for pos in positions:
+        if pos['code'] == code:
+            pos['stop_loss'] = stop_loss
+            pos['stop_profit'] = stop_profit
+            save_positions(positions)
+            return jsonify({'success': True, 'message': '止损止盈已更新', 'position': pos})
+    
+    return jsonify({'success': False, 'message': '未找到该持仓'})
+
+@app.route('/api/positions/check_alerts', methods=['GET'])
+def api_check_position_alerts():
+    """检查持仓预警（止损止盈触发）"""
+    positions = load_positions()
+    alerts = []
+    
+    for pos in positions:
+        current_price = get_stock_realtime_price(pos['code'])
+        
+        # 止损检查
+        if pos['stop_loss'] > 0 and current_price <= pos['stop_loss']:
+            alerts.append({
+                'type': 'stop_loss',
+                'code': pos['code'],
+                'name': pos['name'],
+                'message': f'{pos["name"]}({pos["code"]})触发止损！当前价{current_price}，止损价{pos["stop_loss"]}',
+                'current_price': current_price,
+                'target_price': pos['stop_loss']
+            })
+        
+        # 止盈检查
+        if pos['stop_profit'] > 0 and current_price >= pos['stop_profit']:
+            alerts.append({
+                'type': 'stop_profit',
+                'code': pos['code'],
+                'name': pos['name'],
+                'message': f'{pos["name"]}({pos["code"]})触发止盈！当前价{current_price}，止盈价{pos["stop_profit"]}',
+                'current_price': current_price,
+                'target_price': pos['stop_profit']
+            })
+    
+    return jsonify({'success': True, 'alerts': alerts})
+
+# ========== 关注股池模块 ==========
+WATCHLIST_FILE = os.path.join(PROJECT_DIR, "watchlist.json")
+
+def load_watchlist():
+    """加载关注列表"""
+    try:
+        if os.path.exists(WATCHLIST_FILE):
+            with open(WATCHLIST_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return []
+    except:
+        return []
+
+def save_watchlist(watchlist):
+    """保存关注列表"""
+    try:
+        with open(WATCHLIST_FILE, 'w', encoding='utf-8') as f:
+            json.dump(watchlist, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        print(f"保存关注列表失败: {e}")
+        return False
+
+@app.route('/api/watchlist', methods=['GET'])
+def api_get_watchlist():
+    """获取关注列表（带实时价格）"""
+    watchlist = load_watchlist()
+    
+    # 刷新实时价格
+    for item in watchlist:
+        current_price = get_stock_realtime_price(item['code'])
+        item['current_price'] = current_price
+        item['change'] = ((current_price - item.get('last_price', current_price)) / item.get('last_price', current_price) * 100) if item.get('last_price', 0) > 0 else 0
+    
+    return jsonify({'success': True, 'watchlist': watchlist})
+
+@app.route('/api/watchlist/add', methods=['POST'])
+def api_add_watchlist():
+    """添加关注"""
+    data = request.json
+    code = data.get('code', '').strip()
+    name = data.get('name', '').strip()
+    
+    if not code:
+        return jsonify({'success': False, 'message': '股票代码无效'})
+    
+    watchlist = load_watchlist()
+    
+    # 检查是否已关注
+    for item in watchlist:
+        if item['code'] == code:
+            return jsonify({'success': False, 'message': '已关注该股票'})
+    
+    # 获取当前价格
+    current_price = get_stock_realtime_price(code)
+    
+    watchlist.append({
+        'code': code,
+        'name': name,
+        'add_time': datetime.now().strftime('%Y-%m-%d %H:%M'),
+        'last_price': current_price,
+        'current_price': current_price,
+        'change': 0
+    })
+    save_watchlist(watchlist)
+    
+    return jsonify({'success': True, 'message': '关注成功', 'item': watchlist[-1]})
+
+@app.route('/api/watchlist/remove', methods=['POST'])
+def api_remove_watchlist():
+    """取消关注"""
+    data = request.json
+    code = data.get('code', '').strip()
+    
+    if not code:
+        return jsonify({'success': False, 'message': '股票代码无效'})
+    
+    watchlist = load_watchlist()
+    watchlist = [w for w in watchlist if w['code'] != code]
+    save_watchlist(watchlist)
+    
+    return jsonify({'success': True, 'message': '已取消关注'})
+
+# ========== 大盘数据模块 ==========
+@app.route('/api/market/index', methods=['GET'])
+def api_market_index():
+    """获取三大指数实时数据"""
+    try:
+        # 上证指数 sh000001, 深证成指 sz399001, 创业板 sz399006
+        codes = ['sh000001', 'sz399001', 'sz399006']
+        url = "http://qt.gtimg.cn/q=" + ','.join(codes)
+        resp = requests.get(url, timeout=10)
+        lines = resp.text.strip().split('\n')
+        
+        result = {}
+        for line in lines:
+            if not line.startswith('v_'):
+                continue
+            try:
+                parts = line.split('="')
+                if len(parts) < 2:
+                    continue
+                raw_code = parts[0].replace('v_', '')
+                data = parts[1].replace('"', '').split('~')
+                
+                if len(data) < 45:
+                    continue
+                
+                price = float(data[3]) if data[3] else 0
+                change = float(data[32]) if data[32] else 0
+                
+                if raw_code == 'sh000001':
+                    result['sh'] = {'price': price, 'change': change, 'name': '上证指数'}
+                elif raw_code == 'sz399001':
+                    result['sz'] = {'price': price, 'change': change, 'name': '深证成指'}
+                elif raw_code == 'sz399006':
+                    result['cyb'] = {'price': price, 'change': change, 'name': '创业板'}
+            except:
+                continue
+        
+        return jsonify({'success': True, 'data': result})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/api/market/north', methods=['GET'])
+def api_market_north():
+    """获取北向资金"""
+    try:
+        import akshare as ak
+        # 尝试获取北向资金数据
+        try:
+            north_data = ak.stock_em_hsgt_north_net_flow_in(indicator="北向资金")
+            if north_data and len(north_data) > 0:
+                latest = north_data.iloc[-1]
+                net_flow = float(latest['北向资金']) if '北向资金' in north_data.columns else 0
+                return jsonify({'success': True, 'data': {'net_flow': net_flow, 'date': str(latest['日期']) if '日期' in north_data.columns else ''}})
+        except:
+            pass
+        
+        # 如果akshare失败，返回模拟数据
+        return jsonify({'success': True, 'data': {'net_flow': 0, 'date': datetime.now().strftime('%Y-%m-%d'), 'note': '数据获取失败，显示为0'}})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/api/market/limit_stat', methods=['GET'])
+def api_market_limit_stat():
+    """获取涨跌停统计"""
+    try:
+        import akshare as ak
+        # 尝试获取涨跌停统计
+        try:
+            limit_up_data = ak.stock_zt_pool_em(date=datetime.now().strftime('%Y%m%d'))
+            limit_up_count = len(limit_up_data) if limit_up_data else 0
+            
+            # 获取跌停数据（近似）
+            limit_down_count = 0  # akshare没有直接的跌停统计接口
+            
+            return jsonify({'success': True, 'data': {'limit_up': limit_up_count, 'limit_down': limit_down_count}})
+        except:
+            pass
+        
+        return jsonify({'success': True, 'data': {'limit_up': 0, 'limit_down': 0, 'note': '数据获取失败'}})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+# ========== 筛选参数自定义模块 ==========
+SCREEN_PARAMS_FILE = os.path.join(PROJECT_DIR, "screen_params.json")
+
+def load_screen_params():
+    """加载筛选参数"""
+    try:
+        if os.path.exists(SCREEN_PARAMS_FILE):
+            with open(SCREEN_PARAMS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return {
+            'change_min': 3, 'change_max': 5,
+            'volume_ratio_min': 1,
+            'turnover_min': 5, 'turnover_max': 10,
+            'market_cap_min': 50, 'market_cap_max': 200
+        }
+    except:
+        return {}
+
+def save_screen_params(params):
+    """保存筛选参数"""
+    try:
+        with open(SCREEN_PARAMS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(params, f, ensure_ascii=False, indent=2)
+        return True
+    except:
+        return False
+
+@app.route('/api/screen_params', methods=['GET'])
+def api_get_screen_params():
+    """获取筛选参数"""
+    params = load_screen_params()
+    return jsonify({'success': True, 'params': params})
+
+@app.route('/api/screen_params/save', methods=['POST'])
+def api_save_screen_params():
+    """保存筛选参数"""
+    params = request.json
+    if save_screen_params(params):
+        return jsonify({'success': True, 'message': '参数已保存'})
+    return jsonify({'success': False, 'message': '保存失败'})
+
+# ========== 筛选历史记录模块 ==========
+SCREEN_HISTORY_FILE = os.path.join(PROJECT_DIR, "screen_history.json")
+
+def load_screen_history():
+    """加载筛选历史"""
+    try:
+        if os.path.exists(SCREEN_HISTORY_FILE):
+            with open(SCREEN_HISTORY_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return []
+    except:
+        return []
+
+def save_screen_history(history):
+    """保存筛选历史"""
+    try:
+        with open(SCREEN_HISTORY_FILE, 'w', encoding='utf-8') as f:
+            json.dump(history, f, ensure_ascii=False, indent=2)
+        return True
+    except:
+        return False
+
+@app.route('/api/screen_history', methods=['GET'])
+def api_get_screen_history():
+    """获取筛选历史"""
+    history = load_screen_history()
+    return jsonify({'success': True, 'history': history})
+
+@app.route('/api/screen_history/save', methods=['POST'])
+def api_save_screen_history_entry():
+    """保存筛选结果"""
+    data = request.json
+    entry = {
+        'time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'type': data.get('type', 'realtime'),  # realtime or limitup
+        'results': data.get('results', []),
+        'count': len(data.get('results', []))
+    }
+    
+    history = load_screen_history()
+    history.insert(0, entry)
+    # 只保留最近30条
+    history = history[:30]
+    save_screen_history(history)
+    
+    return jsonify({'success': True, 'message': '历史已保存'})
+
+# ========== 市场情绪看板模块 ==========
+@app.route('/api/market/sentiment', methods=['GET'])
+def api_market_sentiment():
+    """获取市场情绪（领涨领跌板块、热门题材排行）"""
+    try:
+        import akshare as ak
+        
+        result = {
+            'leading_sectors': [],  # 领涨板块
+            'lagging_sectors': [],  # 领跌板块
+            'hot_topics': [],       # 热门题材
+            'market_strength': 0    # 市场强度评分
+        }
+        
+        # 尝试获取板块涨跌数据
+        try:
+            # 获取行业板块涨跌排行
+            sector_data = ak.stock_board_industry_index_em()
+            if sector_data and len(sector_data) > 0:
+                # 按涨跌幅排序
+                sector_data = sector_data.sort_values(by='涨跌幅', ascending=False)
+                
+                # 领涨板块（前5）
+                for i in range(min(5, len(sector_data))):
+                    row = sector_data.iloc[i]
+                    result['leading_sectors'].append({
+                        'name': str(row.get('板块名称', '')),
+                        'change': float(row.get('涨跌幅', 0)),
+                        'leading_stock': str(row.get('领涨股票', ''))
+                    })
+                
+                # 领跌板块（后5）
+                for i in range(max(0, len(sector_data) - 5), len(sector_data)):
+                    row = sector_data.iloc[i]
+                    result['lagging_sectors'].append({
+                        'name': str(row.get('板块名称', '')),
+                        'change': float(row.get('涨跌幅', 0)),
+                        'leading_stock': str(row.get('领涨股票', ''))
+                    })
+        except Exception as e:
+            print(f"获取板块数据失败: {e}")
+        
+        # 热门题材（使用预设题材+涨幅计算）
+        hot_topics_map = {
+            '商业航天': ['航天', '卫星', '军工'],
+            '机器人': ['机器人', '自动化', '智能制造'],
+            '半导体': ['半导体', '芯片', '集成电路'],
+            'AI应用': ['AI', '人工智能', '大模型'],
+            '新能源': ['新能源', '光伏', '风电'],
+            '锂电': ['锂电池', '锂电', '动力电池'],
+            '电池': ['电池', '储能', '钠离子'],
+            '电力': ['电力', '电网', '电力设备']
+        }
+        
+        try:
+            # 根据板块涨跌幅计算题材热度
+            if sector_data and len(sector_data) > 0:
+                for topic, keywords in hot_topics_map.items():
+                    # 查找相关板块的平均涨幅
+                    related_changes = []
+                    for kw in keywords:
+                        matches = sector_data[sector_data['板块名称'].str.contains(kw, na=False)]
+                        if len(matches) > 0:
+                            related_changes.extend(matches['涨跌幅'].tolist())
+                    
+                    avg_change = sum(related_changes) / len(related_changes) if related_changes else 0
+                    result['hot_topics'].append({
+                        'name': topic,
+                        'avg_change': avg_change,
+                        'hot_score': max(0, avg_change) * 10  # 热门分
+                    })
+                
+                # 按热门分排序
+                result['hot_topics'] = sorted(result['hot_topics'], key=lambda x: x['hot_score'], reverse=True)
+        except Exception as e:
+            print(f"计算题材热度失败: {e}")
+        
+        # 计算市场强度评分（基于领涨/领跌板块涨幅）
+        leading_avg = sum([s['change'] for s in result['leading_sectors']]) / len(result['leading_sectors']) if result['leading_sectors'] else 0
+        lagging_avg = sum([s['change'] for s in result['lagging_sectors']]) / len(result['lagging_sectors']) if result['lagging_sectors'] else 0
+        result['market_strength'] = int((leading_avg - lagging_avg) * 10)  # 简化评分
+        
+        return jsonify({'success': True, 'data': result})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+# ========== AI智能建议模块 ==========
+@app.route('/api/ai_suggestion/<code>', methods=['GET'])
+def api_ai_suggestion(code):
+    """获取AI智能投资建议"""
+    try:
+        # 获取股票分析数据
+        result_file = os.path.join(ANALYSIS_OUTPUT_DIR, f"data_{code}.json")
+        
+        suggestion = {
+            'code': code,
+            'overall_score': 0,
+            'suggestion': '',
+            'key_factors': [],
+            'risk_level': '中'
+        }
+        
+        if os.path.exists(result_file):
+            with open(result_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # 基于分析数据计算综合评分和建议
+            # 评分因素：资金流向、技术面、基本面、市场情绪
+            
+            score = 50  # 基础分
+            
+            # 资金流向评分
+            fund_flow = data.get('fund_flow', {})
+            if fund_flow.get('main_inflow_rate', 0) > 0:
+                score += 15
+                suggestion['key_factors'].append('主力资金流入')
+            elif fund_flow.get('main_outflow_rate', 0) > 0:
+                score -= 10
+                suggestion['key_factors'].append('主力资金流出')
+            
+            # 技术面评分
+            kline_data = data.get('kline_data', {})
+            if kline_data.get('trend', '') == 'up':
+                score += 10
+                suggestion['key_factors'].append('K线趋势向上')
+            elif kline_data.get('trend', '') == 'down':
+                score -= 10
+                suggestion['key_factors'].append('K线趋势向下')
+            
+            # 基本面评分
+            financial = data.get('financial_summary', {})
+            pe = financial.get('pe_ratio', 0)
+            if pe > 0 and pe < 30:
+                score += 10
+                suggestion['key_factors'].append('估值合理')
+            elif pe > 50:
+                score -= 5
+                suggestion['key_factors'].append('估值偏高')
+            
+            # 市场情绪评分（基于板块热度）
+            sector = data.get('sector', '未知')
+            # 检查是否在热门题材
+            hot_topics = ['商业航天', '机器人', '半导体', '芯片', 'AI应用', '新能源', '锂电', '电池', '电力']
+            if any(topic in sector for topic in hot_topics):
+                score += 15
+                suggestion['key_factors'].append('热门题材概念')
+            
+            suggestion['overall_score'] = max(0, min(100, score))
+            
+            # 根据评分生成建议
+            if score >= 80:
+                suggestion['suggestion'] = '综合评分较高，建议重点关注。多个积极因素叠加，可考虑逢低介入。'
+                suggestion['risk_level'] = '低'
+            elif score >= 60:
+                suggestion['suggestion'] = '综合评分中等，建议观望。部分因素积极但存在不确定性，需等待更多信号。'
+                suggestion['risk_level'] = '中'
+            elif score >= 40:
+                suggestion['suggestion'] = '综合评分偏低，建议谨慎。存在较多不利因素，不宜急于介入。'
+                suggestion['risk_level'] = '中高'
+            else:
+                suggestion['suggestion'] = '综合评分较低，建议回避。多个消极因素叠加，风险较高。'
+                suggestion['risk_level'] = '高'
+        else:
+            suggestion['suggestion'] = '暂无分析数据，请先进行个股深度分析。'
+            suggestion['risk_level'] = '未知'
+        
+        return jsonify({'success': True, 'data': suggestion})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+# ========== 报告导出模块 ==========
+@app.route('/api/export_report/<code>', methods=['GET'])
+def api_export_report(code):
+    """导出分析报告为JSON格式（前端可转为PDF或图片）"""
+    try:
+        result_file = os.path.join(ANALYSIS_OUTPUT_DIR, f"data_{code}.json")
+        
+        if not os.path.exists(result_file):
+            return jsonify({'success': False, 'message': '报告不存在'})
+        
+        with open(result_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        # 添加导出格式信息
+        export_data = {
+            'export_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'code': code,
+            'name': data.get('name', ''),
+            'analysis_data': data,
+            'export_format': 'json'
+        }
+        
+        return jsonify({'success': True, 'data': export_data})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
 if __name__ == '__main__':
     os.makedirs(os.path.join(PROJECT_DIR, "logs"), exist_ok=True)
     print("启动Web服务: http://localhost:5000")
