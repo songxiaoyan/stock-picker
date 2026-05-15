@@ -464,7 +464,11 @@ def api_set_schedule():
             return jsonify({'success': False, 'message': '关闭失败'})
 
 # --- Single Stock Analysis ---
-ANALYSIS_DIR = "/mnt/d/hermes-workspace/stock-analysis"
+# 动态检测分析目录（适配Docker容器内/外部路径）
+if os.path.exists('/stock-analysis'):
+    ANALYSIS_DIR = '/stock-analysis'
+else:
+    ANALYSIS_DIR = '/mnt/d/hermes-workspace/stock-analysis'
 ANALYSIS_SCRIPT = os.path.join(ANALYSIS_DIR, "stock_full_report.py")
 ANALYSIS_OUTPUT_DIR = os.path.join(ANALYSIS_DIR, "output")
 ANALYSIS_HISTORY_FILE = os.path.join(PROJECT_DIR, "analysis_history.json")
