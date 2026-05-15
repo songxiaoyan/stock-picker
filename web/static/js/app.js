@@ -291,6 +291,11 @@ function updateRealtimeUI(state) {
             // Update button states for completed analysis
             setTimeout(updateExistingButtons, 100);
         }
+        
+        // 筛选完成后保存历史记录
+        if (!state.running && state.results.length > 0) {
+            saveScreenHistoryEntry('realtime', state.results);
+        }
     }
 }
 
@@ -329,6 +334,11 @@ function updateLimitUpUI(state) {
             tbody.innerHTML = html;
             // Update button states for completed analysis
             setTimeout(updateExistingButtons, 100);
+        }
+        
+        // 筛选完成后保存历史记录
+        if (!state.running && state.results.length > 0) {
+            saveScreenHistoryEntry('limitup', state.results);
         }
     }
 }
@@ -1232,6 +1242,48 @@ function loadScreenHistory() {
         .catch(function(e) {
             console.log('加载筛选历史失败:', e);
         });
+}
+
+// 自动保存筛选历史记录（带防重复机制）
+var lastSavedHistoryTime = {};
+function saveScreenHistoryEntry(type, results) {
+    if (!results || results.length === 0) return;
+    
+    // 防止重复保存（同一类型5分钟内不重复）
+    var now = Date.now();
+    if (lastSavedHistoryTime[type] && (now - lastSavedHistoryTime[type]) < 300000) {
+        return;
+    }
+    lastSavedHistoryTime[type] = now;
+    
+    var entry = {
+        time: new Date().toLocaleString('zh-CN'),
+        type: type,
+        count: results.length,
+        stocks: results.slice(0, 10).map(function(r) {
+            return {
+                code: r['代码'],
+                name: r['名称'],
+                change: r['涨跌幅'] || r['涨幅'] || ''
+            };
+        })
+    };
+    
+    fetch(API + '/api/screen_history/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(entry)
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+        if (data.success) {
+            console.log('筛选历史已保存');
+            loadScreenHistory();
+        }
+    })
+    .catch(function(e) {
+        console.log('保存筛选历史失败:', e);
+    });
 }
 
 function renderScreenHistory(history) {

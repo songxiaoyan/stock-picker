@@ -50,6 +50,34 @@ try:
 except:
     pass
 
+# 加载自定义筛选参数（优先使用）
+SCREEN_PARAMS_FILE = os.path.join(os.path.dirname(__file__), 'screen_params.json')
+def load_screen_params():
+    """加载自定义筛选参数"""
+    try:
+        if os.path.exists(SCREEN_PARAMS_FILE):
+            with open(SCREEN_PARAMS_FILE, 'r', encoding='utf-8') as f:
+                params = json.load(f)
+                logger.info(f"加载自定义筛选参数: {params}")
+                return params
+    except:
+        pass
+    return None
+
+# 获取筛选参数（自定义参数优先，否则使用config默认值）
+custom_params = load_screen_params()
+if custom_params:
+    GAIN_MIN = custom_params.get('change_min', GAIN_MIN)
+    GAIN_MAX = custom_params.get('change_max', GAIN_MAX)
+    VOLUME_RATIO_MIN = custom_params.get('volume_ratio_min', VOLUME_RATIO_MIN)
+    TURNOVER_MIN = custom_params.get('turnover_min', TURNOVER_MIN)
+    TURNOVER_MAX = custom_params.get('turnover_max', TURNOVER_MAX)
+    MARKET_CAP_MIN = custom_params.get('market_cap_min', MARKET_CAP_MIN)
+    MARKET_CAP_MAX = custom_params.get('market_cap_max', MARKET_CAP_MAX)
+    logger.info(f"使用自定义筛选参数: 涨幅{GAIN_MIN}-{GAIN_MAX}% 量比>{VOLUME_RATIO_MIN} 换手{TURNOVER_MIN}-{TURNOVER_MAX}% 市值{MARKET_CAP_MIN}-{MARKET_CAP_MAX}亿")
+else:
+    logger.info(f"使用默认筛选参数: 涨幅{GAIN_MIN}-{GAIN_MAX}% 量比>{VOLUME_RATIO_MIN} 换手{TURNOVER_MIN}-{TURNOVER_MAX}% 市值{MARKET_CAP_MIN}-{MARKET_CAP_MAX}亿")
+
 # 行业分类简化映射（证监会代码 -> 简化板块名称）
 INDUSTRY_SHORT_MAP = {
     # 金融

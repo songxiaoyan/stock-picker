@@ -15,7 +15,11 @@ from datetime import datetime
 app = Flask(__name__)
 CORS(app)
 
-PROJECT_DIR = "/mnt/d/hermes-workspace/stock-picker"
+# 动态获取PROJECT_DIR（适配Docker容器内/外部路径）
+if os.path.exists('/app/stock_picker_fast.py'):
+    PROJECT_DIR = '/app'
+else:
+    PROJECT_DIR = '/mnt/d/hermes-workspace/stock-picker'
 LOG_FILE = os.path.join(PROJECT_DIR, "logs", "stock_picker.log")
 SECTORS_FILE = os.path.join(PROJECT_DIR, "hot_sectors.json")
 SKILL_SCRIPT = "/home/xiaoyansong/.hermes/skills/research/short-term-stock-picker/scripts/pick_stocks.py"
@@ -1259,6 +1263,107 @@ def api_export_report(code):
         }
         
         return jsonify({'success': True, 'data': export_data})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+# ========== 价格预警模块 ==========
+ALERTS_FILE = os.path.join(PROJECT_DIR, "alerts.json")
+
+def load_alerts():
+    if os.path.exists(ALERTS_FILE):
+        with open(ALERTS_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return []
+
+def save_alerts(alerts):
+    with open(ALERTS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(alerts, f, ensure_ascii=False, indent=2)
+
+@app.route('/api/alerts', methods=['GET'])
+def api_get_alerts():
+    """获取所有价格预警"""
+    alerts = load_alerts()
+    return jsonify({'success': True, 'alerts': alerts})
+
+@app.route('/api/alerts/add', methods=['POST'])
+def api_add_alert():
+    """添加价格预警"""
+    try:
+        data = request.json
+        code = data.get('code')
+        name = data.get('name')
+        target_price = data.get('target_price')
+        alert_type = data.get('alert_type', 'above')  # above/below
+        
+        if not code or not target_price:
+            return jsonify({'success': False, 'message': '缺少必要参数'})
+        
+        alerts = load_alerts()
+        new_alert = {
+            'id': datetime.now().strftime('%Y%m%d%H%M%S') + '_' + code,
+            'code': code,
+            'name': name or '',
+            'target_price': float(target_price),
+            'alert_type': alert_type,
+            'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'status': 'active'
+        }
+        alerts.append(new_alert)
+        save_alerts(alerts)
+        
+        return jsonify({'success': True, 'message': '预警已添加', 'alert': new_alert})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/api/alerts/remove/<alert_id>', methods=['DELETE'])
+def api_remove_alert(alert_id):
+    """删除价格预警"""
+    try:
+        alerts = load_alerts()
+        alerts = [a for a in alerts if a['id'] != alert_id]
+        save_alerts(alerts)
+        return jsonify({'success': True, 'message': '预警已删除'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+# ========== 板块对比分析模块 ==========
+@app.route('/api/sector_compare', methods=['GET'])
+def api_sector_compare():
+    """同板块多股票横向对比"""
+    try:
+        codes = request.args.get('codes', '')
+        if not codes:
+            return jsonify({'success': False, 'message': '请提供股票代码'})
+        
+        code_list = codes.split(',')
+        if len(code_list) < 2:
+            return jsonify({'success': False, 'message': '请提供至少2个股票代码'})
+        
+        compare_data = []
+        for code in code_list[:5]:  # 最多5个
+            result_file = os.path.join(ANALYSIS_OUTPUT_DIR, f"data_{code}.json")
+            if os.path.exists(result_file):
+                with open(result_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                compare_data.append({
+                    'code': code,
+                    'name': data.get('name', ''),
+                    'price': data.get('price', 0),
+                    'change': data.get('change', 0),
+                    'market_cap': data.get('market_cap', 0),
+                    'turnover': data.get('turnover', 0),
+                    'volume_ratio': data.get('volume_ratio', 0),
+                    'score': data.get('score', 0),
+                    'trend': data.get('trend', '未知')
+                })
+        
+        if len(compare_data) < 2:
+            return jsonify({'success': False, 'message': '请先分析对比的股票'})
+        
+        # 按评分排序
+        compare_data.sort(key=lambda x: x.get('score', 0), reverse=True)
+        
+        return jsonify({'success': True, 'data': compare_data})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
 
