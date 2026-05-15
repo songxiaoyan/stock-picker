@@ -46,6 +46,187 @@ state_limitup = {
     'csv_path': ''
 }
 
+# 股票搜索缓存（避免频繁请求）
+STOCK_LIST_CACHE = None
+STOCK_LIST_CACHE_TIME = 0
+CACHE_EXPIRE_SECONDS = 3600  # 1小时过期
+
+def get_all_stocks():
+    """获取全市场股票列表（使用腾讯接口，带缓存）"""
+    global STOCK_LIST_CACHE, STOCK_LIST_CACHE_TIME
+    now = time.time()
+    
+    if STOCK_LIST_CACHE and (now - STOCK_LIST_CACHE_TIME) < CACHE_EXPIRE_SECONDS:
+        return STOCK_LIST_CACHE
+    
+    try:
+        # 使用腾讯实时接口（与stock_picker_fast.py一致）
+        url = "http://qt.gtimg.cn/q=" + "sh000001"  # 先测试连接
+        resp = requests.get(url, timeout=10)
+        if resp.status_code != 200:
+            raise Exception("腾讯接口不可用")
+        
+        # 获取全市场A股代码列表
+        # 使用akshare获取代码列表（轻量级）
+        import akshare as ak
+        try:
+            stock_list = ak.stock_info_a_code_name()  # 只获取代码和名称，不请求实时行情
+            codes = []
+            for _, row in stock_list.iterrows():
+                code = str(row['code'])
+                # 过滤科创板（688/689开头）
+                if code.startswith('688') or code.startswith('689'):
+                    continue
+                codes.append(code)
+        except:
+            # akshare失败时使用本地代码列表（从industry_map.json）
+            codes = []
+            for key in SECTOR_MAP.keys():
+                if '.' in key:
+                    c = key.split('.')[1]
+                    if not c.startswith('688') and not c.startswith('689'):
+                        codes.append(c)
+        
+        # 批量获取实时行情（腾讯接口，每批500个）
+        stocks = []
+        market_map = {'6': 'sh', '0': 'sz', '3': 'sz'}
+        
+        for i in range(0, len(codes), 500):
+            batch_codes = codes[i:i+500]
+            qt_codes = []
+            for c in batch_codes:
+                market = 'sh' if c.startswith('6') else 'sz'
+                qt_codes.append(f"{market}{c}")
+            
+            url = "http://qt.gtimg.cn/q=" + ','.join(qt_codes)
+            resp = requests.get(url, timeout=15)
+            lines = resp.text.strip().split('\n')
+            
+            for line in lines:
+                if not line.startswith('v_'):
+                    continue
+                try:
+                    # 解析腾讯数据格式: v_sh600519="51~贵州茅台~..."
+                    parts = line.split('="')
+                    if len(parts) < 2:
+                        continue
+                    raw_code = parts[0].replace('v_', '').replace('sh', '').replace('sz', '')
+                    data = parts[1].replace('"', '').split('~')
+                    
+                    if len(data) < 45:
+                        continue
+                    
+                    name = data[1]
+                    price = float(data[3]) if data[3] else 0
+                    change = float(data[32]) if data[32] else 0  # 涨跌幅
+                    
+                    # 查找行业
+                    industry = '--'
+                    market_key = f"{'sh' if raw_code.startswith('6') else 'sz'}.{raw_code}"
+                    if market_key in SECTOR_MAP:
+                        industry_code = SECTOR_MAP[market_key]
+                        # 简化行业名称
+                        industry_map_simple = {
+                            'C': '制造业', 'J': '金融', 'K': '房地产', 'F': '批发零售',
+                            'G': '交通运输', 'D': '电力', 'E': '建筑', 'I': '信息技术',
+                            'M': '科研服务', 'N': '水利环境', 'O': '居民服务', 'P': '教育',
+                            'Q': '卫生', 'R': '文化娱乐', 'S': '公共管理', 'A': '农业',
+                            'B': '采矿', 'H': '住宿餐饮', 'L': '租赁商务', 'T': '国际组织'
+                        }
+                        if industry_code in industry_map_simple:
+                            industry = industry_map_simple[industry_code]
+                        else:
+                            industry = industry_code
+                    
+                    stocks.append({
+                        'code': raw_code,
+                        'name': name,
+                        'price': price,
+                        'change': change,
+                        'volume_ratio': 0,  # 腾讯接口不直接提供量比
+                        'turnover': 0,
+                        'market_cap': 0,
+                        'industry': industry
+                    })
+                except Exception as e:
+                    continue
+        
+        STOCK_LIST_CACHE = stocks
+        STOCK_LIST_CACHE_TIME = now
+        print(f"股票列表缓存更新: {len(stocks)} 条")
+        return stocks
+    except Exception as e:
+        print(f"获取股票列表失败: {e}")
+        return STOCK_LIST_CACHE or []
+
+@app.route('/api/search', methods=['GET'])
+def api_search():
+    """搜索股票（代码或名称模糊匹配）"""
+    query = request.args.get('q', '').strip()
+    if not query:
+        return jsonify({'success': False, 'message': '请输入搜索关键词', 'results': []})
+    
+    stocks = get_all_stocks()
+    if not stocks:
+        return jsonify({'success': False, 'message': '获取股票列表失败', 'results': []})
+    
+    # 模糊匹配（代码前缀或名称包含）
+    results = []
+    query_lower = query.lower()
+    for stock in stocks:
+        code_match = stock['code'].startswith(query)
+        name_match = query_lower in stock['name'].lower()
+        
+        if code_match or name_match:
+            results.append(stock)
+    
+    # 按匹配度排序：代码精确匹配优先，名称匹配其次
+    def sort_key(s):
+        if s['code'] == query:
+            return (0, 0)  # 精确代码匹配
+        elif s['code'].startswith(query):
+            return (1, len(s['code']) - len(query))  # 代码前缀匹配
+        else:
+            return (2, len(s['name']))  # 名称匹配
+    
+    results.sort(key=sort_key)
+    
+    # 限制返回数量
+    return jsonify({
+        'success': True,
+        'query': query,
+        'total': len(results),
+        'results': results[:50]  # 最多返回50条
+    })
+
+@app.route('/api/stock/info/<code>', methods=['GET'])
+def api_stock_info(code):
+    """获取单只股票基本信息（用于分析入口）"""
+    try:
+        import akshare as ak
+        stock_info = ak.stock_zh_a_spot_em()
+        stock_row = stock_info[stock_info['代码'] == code]
+        
+        if stock_row.empty:
+            return jsonify({'success': False, 'message': '股票代码不存在'})
+        
+        row = stock_row.iloc[0]
+        return jsonify({
+            'success': True,
+            'data': {
+                'code': code,
+                'name': row['名称'],
+                'price': float(row['最新价']) if row['最新价'] else 0,
+                'change': float(row['涨跌幅']) if row['涨跌幅'] else 0,
+                'volume_ratio': float(row['量比']) if row['量比'] else 0,
+                'turnover': float(row['换手率']) if row['换手率'] else 0,
+                'market_cap': float(row['总市值']) / 100000000 if row['总市值'] else 0,
+                'industry': row.get('所属行业', '--') or '--'
+            }
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'获取失败: {str(e)}'})
+
 @app.route('/favicon.ico')
 def favicon():
     return '', 204

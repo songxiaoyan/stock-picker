@@ -5,7 +5,141 @@ let currentSector = '商业航天';
 let sectorDataCache = {};
 const SECTORS = ["商业航天", "机器人", "半导体", "芯片", "AI应用", "新能源", "锂电", "电池", "电力"];
 
+// 搜索相关变量
+let searchDebounceTimer = null;
+let lastSearchQuery = '';
+
 function el(id) { return document.getElementById(id); }
+
+// 搜索功能：处理输入（带防抖）
+function handleSearchInput() {
+    var input = el('search-input');
+    var query = input ? input.value.trim() : '';
+    
+    // 清除之前的防抖定时器
+    if (searchDebounceTimer) {
+        clearTimeout(searchDebounceTimer);
+    }
+    
+    // 输入为空时隐藏建议
+    if (!query) {
+        hideSearchSuggest();
+        return;
+    }
+    
+    // 防抖：300ms后执行搜索
+    searchDebounceTimer = setTimeout(function() {
+        if (query.length >= 1) {  // 输入至少1个字符才开始搜索
+            fetchSearchSuggestions(query);
+        }
+    }, 300);
+}
+
+// 获取搜索建议
+function fetchSearchSuggestions(query) {
+    if (query === lastSearchQuery) return;  // 避免重复请求
+    lastSearchQuery = query;
+    
+    fetch(API + '/api/search?q=' + encodeURIComponent(query))
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            if (data.success && data.results && data.results.length > 0) {
+                renderSearchSuggest(data.results);
+            } else {
+                hideSearchSuggest();
+            }
+        })
+        .catch(function(e) {
+            console.log('搜索失败:', e);
+            hideSearchSuggest();
+        });
+}
+
+// 渲染搜索建议下拉
+function renderSearchSuggest(results) {
+    var suggestBox = el('search-suggest');
+    if (!suggestBox) return;
+    
+    var html = '';
+    for (var i = 0; i < results.length; i++) {
+        var stock = results[i];
+        var changeColor = stock.change > 0 ? 'text-red-400' : (stock.change < 0 ? 'text-green-400' : 'text-slate-400');
+        var changeText = stock.change > 0 ? '+' + stock.change.toFixed(2) + '%' : stock.change.toFixed(2) + '%';
+        
+        html += '<div class="px-3 py-2 hover:bg-slate-700 cursor-pointer flex items-center justify-between" onclick="selectSearchStock(\'' + stock.code + '\')">';
+        html += '<div class="flex items-center gap-2">';
+        html += '<span class="text-violet-400 font-mono text-sm">' + stock.code + '</span>';
+        html += '<span class="text-white text-sm">' + stock.name + '</span>';
+        html += '<span class="text-slate-500 text-xs">' + (stock.industry || '--') + '</span>';
+        html += '</div>';
+        html += '<div class="flex items-center gap-3 text-xs">';
+        html += '<span class="text-slate-300">' + stock.price.toFixed(2) + '</span>';
+        html += '<span class="' + changeColor + ' font-medium">' + changeText + '</span>';
+        html += '<button onclick="analyzeStock(\'' + stock.code + '\'); event.stopPropagation();" class="bg-violet-600 hover:bg-violet-500 text-white px-2 py-1 rounded text-xs ml-2">';
+        html += '<i class="fas fa-chart-bar"></i> 分析';
+        html += '</button>';
+        html += '</div>';
+        html += '</div>';
+    }
+    
+    suggestBox.innerHTML = html;
+    suggestBox.classList.remove('hidden');
+}
+
+// 隐藏搜索建议
+function hideSearchSuggest() {
+    var suggestBox = el('search-suggest');
+    if (suggestBox) {
+        suggestBox.classList.add('hidden');
+    }
+}
+
+// 选择搜索结果中的股票（跳转到分析页面）
+function selectSearchStock(code) {
+    hideSearchSuggest();
+    var input = el('search-input');
+    if (input) input.value = '';
+    
+    // 直接跳转到分析页面
+    analyzeStock(code);
+}
+
+// 执行搜索（Enter键触发）
+function performSearch() {
+    var input = el('search-input');
+    var query = input ? input.value.trim() : '';
+    if (!query) return;
+    
+    fetch(API + '/api/search?q=' + encodeURIComponent(query))
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            if (data.success && data.results && data.results.length > 0) {
+                // 如果只有一个结果，直接跳转分析
+                if (data.results.length === 1) {
+                    analyzeStock(data.results[0].code);
+                } else {
+                    // 多个结果时显示建议
+                    renderSearchSuggest(data.results);
+                }
+            } else {
+                showToast('未找到匹配的股票', 'error');
+            }
+        })
+        .catch(function(e) {
+            showToast('搜索失败', 'error');
+        });
+}
+
+// 点击页面其他区域隐藏搜索建议
+document.addEventListener('click', function(e) {
+    var searchInput = el('search-input');
+    var searchSuggest = el('search-suggest');
+    if (searchSuggest && searchInput) {
+        if (!searchInput.contains(e.target) && !searchSuggest.contains(e.target)) {
+            hideSearchSuggest();
+        }
+    }
+});
 
 document.addEventListener('DOMContentLoaded', function() {
     setInterval(function() {

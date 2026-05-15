@@ -25,6 +25,22 @@
             <div class="w-7 h-7 rounded bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center text-white"><i class="fas fa-chart-line text-sm"></i></div>
             <h1 class="font-bold text-lg tracking-wide text-slate-100">A股短线策略系统 <span class="text-xs bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded ml-1 border border-slate-700">Pro</span></h1>
         </div>
+        
+        <!-- 搜索框 -->
+        <div class="flex items-center gap-2 flex-1 max-w-md mx-4">
+            <div class="relative flex-1">
+                <input type="text" id="search-input" 
+                    placeholder="搜索股票代码或名称..." 
+                    class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-1.5 text-sm text-white placeholder-slate-500 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition-all"
+                    oninput="handleSearchInput()"
+                    onkeypress="if(event.key==='Enter') performSearch()">
+                <i class="fas fa-search absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm"></i>
+                <!-- 搜索建议下拉 -->
+                <div id="search-suggest" class="hidden absolute top-full left-0 right-0 mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-xl z-30 max-h-60 overflow-y-auto">
+                </div>
+            </div>
+        </div>
+        
         <div class="flex items-center gap-4 text-xs text-slate-400">
             <span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> 服务在线</span>
             <span id="sys-time">00:00:00</span>
